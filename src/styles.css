@@ -122,7 +122,8 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 }
 .sort:hover { color: var(--fg); }
 .sort::after { content: '↓'; display: inline-block; transition: transform 0.5s var(--ease-out); }
-.sort.asc::after { transform: rotate(180deg); }
+.sort[data-mode='oldest']::after { transform: rotate(180deg); }
+.sort[data-mode='random']::after { content: '⤨'; }
 
 /* ---------- masonry grid ---------- */
 main { padding: 10px var(--gutter) 0; }

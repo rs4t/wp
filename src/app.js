@@ -16,7 +16,9 @@
 
   let data, items = [], byId = new Map();
   let view = [];          // currently filtered + sorted items
-  let cat = null, asc = false;
+  const SORTS = ['random', 'newest', 'oldest'];
+  let cat = null, sort = 'random';
+  let shuffled = [];      // random order, fixed until the visitor picks random again
   let tiles = new Map();  // id -> { el, card, img, col, x, y, w, h }
   let cols = 0, colW = 0;
 
@@ -52,7 +54,8 @@
 
     const q = new URLSearchParams(location.search);
     if (q.get('c') && m.categories.some((c) => c.id === q.get('c'))) cat = q.get('c');
-    asc = q.get('sort') === 'oldest';
+    if (SORTS.includes(q.get('sort'))) sort = q.get('sort');
+    reshuffle();
 
     buildChips();
     buildTiles();
@@ -61,7 +64,11 @@
 
     $('#empty').hidden = items.length > 0;
     $('#shuffle').addEventListener('click', shuffle);
-    $('#sort').addEventListener('click', () => { asc = !asc; applyView(true); syncQuery(); });
+    $('#sort').addEventListener('click', () => {
+      sort = SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length];
+      if (sort === 'random') reshuffle();
+      applyView(true); syncQuery();
+    });
 
     let rt;
     addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(false); movePill(false); }, 120); });
@@ -79,6 +86,14 @@
       intro().then(() => revealObserve());
     } else {
       revealObserve();
+    }
+  }
+
+  function reshuffle() {
+    shuffled = items.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
   }
 
@@ -113,7 +128,7 @@
   function syncQuery() {
     const q = new URLSearchParams();
     if (cat) q.set('c', cat);
-    if (asc) q.set('sort', 'oldest');
+    if (sort !== 'random') q.set('sort', sort);
     const s = q.toString();
     history.replaceState(history.state, '', location.pathname + (s ? '?' + s : ''));
   }
@@ -181,12 +196,14 @@
   // ---------- view: filter + sort + masonry ----------
   function applyView(animate) {
     view = items.filter((it) => !cat || it.cat === cat);
-    if (asc) view.reverse();
+    if (sort === 'oldest') view.reverse();
+    else if (sort === 'random') { const rank = new Map(shuffled.map((it, i) => [it, i])); view.sort((a, b) => rank.get(a) - rank.get(b)); }
     const visible = new Set(view.map((v) => v.id));
 
     chipsEl.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String((c.dataset.cat || null) === cat)));
-    $('#sort').textContent = asc ? 'oldest' : 'newest';
-    $('#sort').classList.toggle('asc', asc);
+    $('#sort').textContent = sort;
+    $('#sort').dataset.mode = sort;
+    $('#sort').setAttribute('aria-label', `Sort: ${sort}. Change sort order`);
     $('#count').textContent = `${pad(view.length)} ${view.length === 1 ? 'wallpaper' : 'wallpapers'}`;
     movePill(animate);
 
@@ -299,7 +316,7 @@
 
   // ---------- intro ----------
   async function intro() {
-    const hero = items[0];
+    const hero = view[0] || items[0];
     const el = document.createElement('div');
     el.className = 'intro';
     el.innerHTML =
