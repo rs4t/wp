@@ -107,6 +107,12 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.35); }
 .lib-head { display: flex; align-items: baseline; gap: 12px; }
 .lib-head h2 { margin-bottom: 14px; }
 .lib-head .btn { margin-left: auto; }
+.status { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--mute); }
+.status:empty { display: none; }
+.status.live { color: var(--ok); border-color: rgba(125, 220, 154, 0.3); }
+.status.busy { color: #ffc53d; border-color: rgba(255, 197, 61, 0.3); }
+.status.busy::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; animation: blink 1.2s infinite; vertical-align: 1px; }
+@keyframes blink { 50% { opacity: 0.25; } }
 .lib { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .l {
   position: relative; border-radius: 10px; overflow: hidden; background: var(--bg-3); cursor: pointer; user-select: none;

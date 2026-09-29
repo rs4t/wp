@@ -16,8 +16,9 @@
 
   let data, items = [], byId = new Map();
   let view = [];          // currently filtered + sorted items
-  const SORTS = ['random', 'newest', 'oldest'];
-  let cat = null, sort = 'random';
+  const SORTS = ['random', 'newest', 'oldest', 'popular'];
+  let cat = null, sort = 'random', color = null, favOnly = false;
+  let counts = null;      // downloads per wallpaper hash, once /api/stats answers
   let shuffled = [];      // random order, fixed until the visitor picks random again
   let tiles = new Map();  // id -> { el, card, img, col, x, y, w, h }
   let cols = 0, colW = 0;
@@ -31,6 +32,11 @@
     get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
   };
+  // Favorites live in this browser only, keyed by file hash so renames keep them.
+  const favs = new Set((() => { try { return JSON.parse(localStorage.getItem('wp-favs') || '[]'); } catch { return []; } })());
+  const saveFavs = () => { try { localStorage.setItem('wp-favs', JSON.stringify([...favs])); } catch {} };
+  const HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>';
+  const SWATCH = { red: '#e5484d', orange: '#f76b15', yellow: '#ffc53d', green: '#46a758', teal: '#12a594', blue: '#3e63dd', purple: '#8e4ec6', pink: '#d6409f', light: '#e8e6e1', gray: '#8b8d98', dark: '#1a1a1d' };
   function toast(msg) {
     let t = $('.toast');
     if (!t) { t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); body.append(t); }
@@ -55,17 +61,24 @@
     const q = new URLSearchParams(location.search);
     if (q.get('c') && m.categories.some((c) => c.id === q.get('c'))) cat = q.get('c');
     if (SORTS.includes(q.get('sort'))) sort = q.get('sort');
+    if (q.get('color') && m.colors?.some((c) => c.id === q.get('color'))) color = q.get('color');
+    for (const h of [...favs]) if (!items.some((it) => it.hash === h)) favs.delete(h);
     reshuffle();
+    loadStats();
 
     buildChips();
+    buildSwatches();
+    updateFavButton();
     buildTiles();
     buildFooter();
     applyView(false);
 
     $('#empty').hidden = items.length > 0;
     $('#shuffle').addEventListener('click', shuffle);
+    $('#favs').addEventListener('click', () => { favOnly = !favOnly; toGridTop(); applyView(true); });
+    $('#clearFilters').addEventListener('click', () => { cat = null; color = null; favOnly = false; applyView(true); syncQuery(); });
     $('#sort').addEventListener('click', () => {
-      sort = SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length];
+      do sort = SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length]; while (sort === 'popular' && !counts);
       if (sort === 'random') reshuffle();
       toGridTop(); applyView(true); syncQuery();
     });
@@ -94,6 +107,59 @@
   function toGridTop() {
     // Far down: jump (a smooth scroll gets cut off when the page shrinks). Close: glide.
     if (scrollY > 0) scrollTo({ top: 0, behavior: reduced || scrollY > innerHeight ? 'instant' : 'smooth' });
+  }
+
+  function loadStats() {
+    fetch(url('api/stats')).then((r) => (r.ok ? r.json() : null)).then((c) => {
+      if (!c) return;
+      counts = c;
+      if (sort === 'popular') applyView(false);
+      if (cur) setInfo(cur, false);
+    }).catch(() => {});
+  }
+  function countLabel(it) {
+    const n = counts?.[it.hash] || 0;
+    return n ? `${n} download${n === 1 ? '' : 's'}` : '';
+  }
+
+  function buildSwatches() {
+    const row = $('#swatches');
+    if (!data.colors?.length) { row.hidden = true; return; }
+    for (const c of data.colors) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'swatch'; b.dataset.color = c.id;
+      b.style.setProperty('--sw', SWATCH[c.id] || '#888');
+      b.title = `${c.id} · ${c.count}`;
+      b.setAttribute('aria-label', `${c.id} wallpapers (${c.count})`);
+      b.addEventListener('click', () => { color = color === c.id ? null : c.id; toGridTop(); applyView(true); syncQuery(); });
+      row.append(b);
+    }
+  }
+
+  function updateFavButton() {
+    const b = $('#favs');
+    b.hidden = favs.size === 0 && !favOnly;
+    b.querySelector('span').textContent = favs.size;
+    b.setAttribute('aria-pressed', String(favOnly));
+  }
+  function toggleFav(it) {
+    const on = !favs.has(it.hash);
+    on ? favs.add(it.hash) : favs.delete(it.hash);
+    saveFavs();
+    const t = tiles.get(it.id);
+    t?.el.classList.toggle('faved', on);
+    if (on) for (const el of [t?.el.querySelector('.heart'), cur === it ? $('#fav') : null]) {
+      if (el) { el.classList.remove('pop'); el.offsetWidth; el.classList.add('pop'); }
+    }
+    if (cur === it) setFavState(it);
+    if (favOnly && !favs.size) favOnly = false;
+    updateFavButton();
+    if (favOnly) applyView(true);
+  }
+  function setFavState(it) {
+    const b = $('#fav');
+    b.setAttribute('aria-pressed', String(favs.has(it.hash)));
+    b.setAttribute('aria-label', favs.has(it.hash) ? 'Remove from favorites (F)' : 'Add to favorites (F)');
   }
 
   function reshuffle() {
@@ -135,6 +201,7 @@
   function syncQuery() {
     const q = new URLSearchParams();
     if (cat) q.set('c', cat);
+    if (color) q.set('color', color);
     if (sort !== 'random') q.set('sort', sort);
     const s = q.toString();
     history.replaceState(history.state, '', location.pathname + (s ? '?' + s : ''));
@@ -161,12 +228,15 @@
         `<div class="lit"></div>` +
         `<div class="meta"><b>${escapeHtml(it.title)}</b><span class="mono">${it.w}×${it.h}</span></div>` +
         (it.new ? `<span class="new">new</span>` : '') +
+        `<span class="heart" role="button" aria-label="Favorite">${HEART}</span>` +
         `</div></div></div>`;
+      if (favs.has(it.hash)) a.classList.add('faved');
       const img = a.querySelector('img');
       const done = () => img.classList.add('ok');
       img.addEventListener('load', done, { once: true });
       img.addEventListener('error', done, { once: true });
       a.addEventListener('click', (e) => {
+        if (e.target.closest('.heart')) { e.preventDefault(); e.stopPropagation(); toggleFav(it); return; }
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         e.preventDefault();
         openLightbox(it, { fromTile: true, push: true });
@@ -202,9 +272,11 @@
 
   // ---------- view: filter + sort + masonry ----------
   function applyView(animate) {
-    view = items.filter((it) => !cat || it.cat === cat);
+    view = items.filter((it) => (!cat || it.cat === cat) && (!color || it.colors?.includes(color)) && (!favOnly || favs.has(it.hash)));
+    const rank = new Map(shuffled.map((it, i) => [it, i]));
     if (sort === 'oldest') view.reverse();
-    else if (sort === 'random') { const rank = new Map(shuffled.map((it, i) => [it, i])); view.sort((a, b) => rank.get(a) - rank.get(b)); }
+    else if (sort === 'random') view.sort((a, b) => rank.get(a) - rank.get(b));
+    else if (sort === 'popular') view.sort((a, b) => (counts?.[b.hash] || 0) - (counts?.[a.hash] || 0) || rank.get(a) - rank.get(b));
     const visible = new Set(view.map((v) => v.id));
 
     chipsEl.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String((c.dataset.cat || null) === cat)));
@@ -212,6 +284,10 @@
     $('#sort').dataset.mode = sort;
     $('#sort').setAttribute('aria-label', `Sort: ${sort}. Change sort order`);
     $('#count').textContent = `${pad(view.length)} ${view.length === 1 ? 'wallpaper' : 'wallpapers'}`;
+    $('#swatches').querySelectorAll('.swatch').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.color === color)));
+    $('#swatches').classList.toggle('picking', !!color);
+    updateFavButton();
+    $('#none').hidden = view.length > 0 || items.length === 0;
     movePill(animate);
 
     if (!animate || reduced) {
@@ -391,6 +467,7 @@
 
   function refit() {
     if (!fig || !cur) return;
+    resetZoom(false);
     const r = fitRect(cur);
     Object.assign(fig.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
     fig._rect = r;
@@ -403,9 +480,9 @@
     Object.assign(f.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: it.color });
     const t = tiles.get(it.id);
     const lo = t?.img.currentSrc || url(`${it.t}-960.webp`);
-    f.innerHTML = `<img class="lo" src="${it.lqip}" alt=""><img class="lo2" src="${lo}" alt=""><img class="hi" alt="${escapeHtml(it.title)}" decoding="async"><span class="spin"></span>`;
+    f.innerHTML = `<div class="zm"><img class="lo" src="${it.lqip}" alt=""><img class="lo2" src="${lo}" alt=""><img class="hi" alt="${escapeHtml(it.title)}" decoding="async"></div><span class="spin"></span>`;
     const hi = f.querySelector('.hi');
-    hi.onload = () => hi.classList.add('ok');
+    hi.onload = () => { hi.classList.add('ok'); f.classList.add('sharp'); };
     hi.src = url(it.p);
     f.style.transformOrigin = '50% 50%';
     f._rect = r;
@@ -425,7 +502,9 @@
     const n = view.length;
     lbIdx.textContent = idx >= 0 ? `${pad(idx + 1)} / ${pad(n)}` : '';
     lbTitle.innerHTML = it.cat ? `<span class="lb-cat">${escapeHtml(it.cat)}/</span>${escapeHtml(it.name)}` : escapeHtml(it.title);
-    lbSpec.innerHTML = `${it.w} × ${it.h}<i>/</i>${it.ratio}<i>/</i>${mb(it.size)}<i>/</i>${it.file.split('.').pop().toUpperCase()}`;
+    const dls = countLabel(it);
+    lbSpec.innerHTML = `${it.w} × ${it.h}<i>/</i>${it.ratio}<i>/</i>${mb(it.size)}<i>/</i>${it.file.split('.').pop().toUpperCase()}${dls ? `<i>/</i>${dls}` : ''}`;
+    setFavState(it);
     dl.href = url(it.o);
     dl.setAttribute('download', it.file);
     dlSize.textContent = mb(it.size);
@@ -461,6 +540,8 @@
     setAmbient(it);
 
     stage.textContent = '';
+    z = { s: 1, x: 0, y: 0 };
+    lb.classList.remove('zoomed');
     fig = makeFig(it);
     stage.append(fig);
     const from = fromTile ? tileRect(it) : null;
@@ -490,6 +571,7 @@
     if (!cur || busy) return;
     busy = true;
     const it = cur;
+    resetZoom(false);
     if (push) history.pushState({}, '', pageUrl('') + location.search);
     document.title = "egor's wallpapers";
     lb.classList.add('leaving');
@@ -533,6 +615,7 @@
     const next = target || list[(idx + dir + list.length) % list.length];
     if (!next || next === cur) return;
     busy = true;
+    resetZoom(false);
     const old = fig, prev = cur;
     cur = next;
     history.replaceState({ id: next.id }, '', pageUrl(next.id) + location.search);
@@ -572,6 +655,12 @@
 
   // lightbox controls
   $('#close').addEventListener('click', () => closeLightbox());
+  $('#fav').addEventListener('click', () => cur && toggleFav(cur));
+  dl.addEventListener('click', () => {
+    if (!cur) return;
+    try { navigator.sendBeacon(url('api/dl'), cur.hash); } catch {}
+    if (counts) { counts[cur.hash] = (counts[cur.hash] || 0) + 1; }
+  });
   $('#prev').addEventListener('click', () => go(-1));
   $('#next').addEventListener('click', () => go(1));
   stage.addEventListener('click', (e) => { if (e.target === stage) closeLightbox(); });
@@ -594,14 +683,118 @@
     idleT = setTimeout(() => { if (!lb.hidden && !lb.querySelector('.lb-chrome:hover')) lb.classList.add('idle'); }, 2600);
   });
 
-  // swipe: horizontal = navigate, down = close
-  let sw = null;
+  // ---------- zoom ----------
+  // Desktop: click to zoom, the mouse pans, the wheel adjusts. Touch: pinch,
+  // drag to pan, double-tap to toggle. Zooming loads the full original.
+  const ZOOMABLE = /\.(jpe?g|png|webp|avif)$/i;
+  let z = { s: 1, x: 0, y: 0 }, lastPointer = 'mouse';
+  const zmEl = () => fig?.querySelector('.zm');
+  const maxZoom = () => Math.min(6, Math.max(2, cur.w / fig._rect.w));
+
+  function applyZoom(mode = 'smooth') {
+    const el = zmEl();
+    if (!el) return;
+    el.style.transition = mode === 'none' || reduced ? 'none' : mode === 'follow' ? 'transform 0.3s cubic-bezier(0.16,1,0.3,1)' : 'transform 0.5s cubic-bezier(0.16,1,0.3,1)';
+    el.style.transform = z.s === 1 ? '' : `translate(${z.x}px, ${z.y}px) scale(${z.s})`;
+    lb.classList.toggle('zoomed', z.s > 1);
+  }
+  function clampPan() {
+    const r = fig._rect, W = r.w * z.s, H = r.h * z.s;
+    const cl = (v, vp, off, size) => (size <= vp ? (vp - size) / 2 - off : Math.min(-off, Math.max(vp - off - size, v)));
+    z.x = cl(z.x, innerWidth, r.x, W);
+    z.y = cl(z.y, innerHeight, r.y, H);
+  }
+  // Scale to s, keeping the viewport point (cx, cy) under the finger/cursor.
+  function zoomAt(s, cx, cy) {
+    const r = fig._rect, px = cx - r.x, py = cy - r.y, k = s / z.s;
+    z = { s, x: px - (px - z.x) * k, y: py - (py - z.y) * k };
+    if (s <= 1.01) z = { s: 1, x: 0, y: 0 }; else { clampPan(); loadFull(); }
+  }
+  // Mouse: the image slides so the cursor's edge of the screen shows that edge of the image.
+  function followPan(cx, cy) {
+    const r = fig._rect, W = r.w * z.s, H = r.h * z.s;
+    if (W > innerWidth) z.x = -r.x - (cx / innerWidth) * (W - innerWidth);
+    if (H > innerHeight) z.y = -r.y - (cy / innerHeight) * (H - innerHeight);
+    clampPan();
+  }
+  function resetZoom(animate = true) {
+    if (z.s === 1) return;
+    z = { s: 1, x: 0, y: 0 };
+    applyZoom(animate ? 'smooth' : 'none');
+  }
+  function loadFull() {
+    const f = fig, it = cur;
+    if (!f || f._full || !ZOOMABLE.test(it.o)) return;
+    f._full = true;
+    f.classList.add('loading');
+    const im = new Image();
+    im.className = 'full'; im.alt = ''; im.decoding = 'async';
+    im.onload = () => { f.querySelector('.zm')?.append(im); requestAnimationFrame(() => im.classList.add('ok')); f.classList.remove('loading'); };
+    im.onerror = () => f.classList.remove('loading');
+    im.src = url(it.o);
+  }
+
+  stage.addEventListener('click', (e) => {
+    if (!fig || lastPointer !== 'mouse' || !e.target.closest('.fig') || busy) return;
+    if (z.s > 1) resetZoom();
+    else { zoomAt(maxZoom(), e.clientX, e.clientY); followPan(e.clientX, e.clientY); applyZoom(); }
+  });
+  lb.addEventListener('mousemove', (e) => {
+    if (z.s > 1 && fig && lastPointer === 'mouse') { followPan(e.clientX, e.clientY); applyZoom('follow'); }
+  });
+  lb.addEventListener('wheel', (e) => {
+    if (!fig || busy) return;
+    e.preventDefault();
+    const s = Math.min(maxZoom() * 1.5, Math.max(1, z.s * Math.exp(-e.deltaY * 0.0015)));
+    zoomAt(s, e.clientX, e.clientY);
+    if (z.s > 1) followPan(e.clientX, e.clientY);
+    applyZoom('follow');
+  }, { passive: false });
+
+  // Touch: swipe (not zoomed) navigates / closes; pinch and pan when zoomed.
+  const pts = new Map();
+  let sw = null, pinch = null, pan = null, lastTap = 0;
+  const mid = () => { const [a, b] = [...pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) }; };
+
   stage.addEventListener('pointerdown', (e) => {
+    lastPointer = e.pointerType;
     if (e.pointerType === 'mouse' || !fig || busy) return;
-    sw = { x: e.clientX, y: e.clientY, dx: 0, dy: 0, axis: null, id: e.pointerId };
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) {
+      if (sw) { fig.style.transform = ''; lb.querySelector('.lb-amb').style.opacity = ''; sw = null; }
+      pan = null;
+      const m = mid();
+      pinch = { d: m.d, s: z.s, cx: (m.x - fig._rect.x - z.x) / z.s, cy: (m.y - fig._rect.y - z.y) / z.s };
+      loadFull();
+      return;
+    }
+    if (pts.size !== 1) return;
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      lastTap = 0; sw = null;
+      if (z.s > 1) resetZoom(); else { zoomAt(Math.min(maxZoom(), 3), e.clientX, e.clientY); applyZoom(); }
+      return;
+    }
+    lastTap = now;
+    if (z.s > 1) pan = { x: e.clientX, y: e.clientY, zx: z.x, zy: z.y };
+    else sw = { x: e.clientX, y: e.clientY, dx: 0, dy: 0, axis: null, id: e.pointerId };
   });
   addEventListener('pointermove', (e) => {
-    if (!sw || e.pointerId !== sw.id || !fig) return;
+    if (!pts.has(e.pointerId) || !fig) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pts.size === 2) {
+      const m = mid(), r = fig._rect;
+      const s = Math.min(maxZoom() * 1.5, Math.max(0.8, pinch.s * (m.d / pinch.d)));
+      z = { s, x: m.x - r.x - pinch.cx * s, y: m.y - r.y - pinch.cy * s };
+      applyZoom('none');
+      return;
+    }
+    if (pan) {
+      z.x = pan.zx + (e.clientX - pan.x); z.y = pan.zy + (e.clientY - pan.y);
+      applyZoom('none');
+      return;
+    }
+    if (!sw || e.pointerId !== sw.id) return;
     sw.dx = e.clientX - sw.x; sw.dy = e.clientY - sw.y;
     if (!sw.axis && Math.hypot(sw.dx, sw.dy) > 8) sw.axis = Math.abs(sw.dx) > Math.abs(sw.dy) ? 'x' : 'y';
     if (sw.axis === 'x') fig.style.transform = `translateX(${sw.dx}px)`;
@@ -611,7 +804,19 @@
       lb.querySelector('.lb-amb').style.opacity = String(1 - k * 0.8);
     }
   });
-  const endSwipe = () => {
+  const endPointer = (e) => {
+    if (!pts.delete(e.pointerId)) return;
+    if (pinch) {
+      if (pts.size < 2) {
+        pinch = null;
+        if (z.s < 1.05) z = { s: 1, x: 0, y: 0 }; else clampPan();
+        applyZoom();
+        const [p] = [...pts.values()];
+        if (p && z.s > 1) pan = { x: p.x, y: p.y, zx: z.x, zy: z.y };
+      }
+      return;
+    }
+    if (pan) { if (!pts.size) { pan = null; clampPan(); applyZoom(); } return; }
     if (!sw || !fig) return (sw = null);
     const { dx, dy, axis } = sw; sw = null;
     const reset = () => {
@@ -623,13 +828,15 @@
     else if (axis === 'y' && dy > 110) { lb.querySelector('.lb-amb').style.opacity = ''; fig.style.transform = ''; closeLightbox(); }
     else reset();
   };
-  addEventListener('pointerup', endSwipe);
-  addEventListener('pointercancel', endSwipe);
+  addEventListener('pointerup', endPointer);
+  addEventListener('pointercancel', endPointer);
 
   function onKey(e) {
     if (e.metaKey || e.ctrlKey || e.altKey || $('.intro')) return;
     if (!lb.hidden) {
-      if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
+      if (e.key === 'Escape') { e.preventDefault(); z.s > 1 ? resetZoom() : closeLightbox(); }
+      else if (e.key === 'f' || e.key === 'F') toggleFav(cur);
+      else if (e.key === 'z' || e.key === 'Z') { if (z.s > 1) resetZoom(); else if (fig) { zoomAt(maxZoom(), innerWidth / 2, innerHeight / 2); applyZoom(); } }
       else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
       else if (e.key === 'r' || e.key === 'R') shuffle();

@@ -60,11 +60,12 @@
   <section class="panel">
     <div class="lib-head">
       <h2>Library <span class="mono dim" id="libCount"></span></h2>
+      <span class="status mono" id="status" role="status"></span>
       <button class="btn ghost small" id="refresh" type="button">refresh</button>
     </div>
     <div class="cats" id="libCats"></div>
     <ul class="lib" id="lib"></ul>
-    <p class="mono dim hint">Tap wallpapers to select them, then move or delete.</p>
+    <p class="mono dim hint">Tap wallpapers to select them, then rename, move or delete.</p>
   </section>
 
   <!-- sticky action bars -->
@@ -75,6 +76,7 @@
   </div>
   <div class="dock" id="selDock" hidden>
     <span class="mono" id="selSummary"></span>
+    <button class="btn ghost" id="rename" type="button" hidden>rename</button>
     <select id="moveTo" aria-label="Move to category"></select>
     <button class="btn danger" id="delete" type="button">delete</button>
     <button class="btn ghost" id="clearSel" type="button" aria-label="Clear selection">✕</button>

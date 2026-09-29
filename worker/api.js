@@ -177,9 +177,11 @@ async function commit(request, env) {
     for (const p of del) { tree.push({ path: p, mode: '100644', type: 'blob', sha: null }); taken.delete(p.toLowerCase()); }
     for (const m of move) {
       const from = byPath.get(m.from);
-      const category = cleanCategory(m.category);
-      const stem = from.name.replace(/\.[^.]+$/, '');
-      if (from.category === category) continue;
+      const category = m.category === undefined ? from.category : cleanCategory(m.category);
+      const oldStem = from.name.replace(/\.[^.]+$/, '');
+      const stem = m.name === undefined ? oldStem : cleanName(m.name);
+      if (!stem) return fail(400, 'Every wallpaper needs a name');
+      if (from.category === category && stem === oldStem) continue;
       taken.delete(from.path.toLowerCase());
       const to = uniquePath(category, stem, ext(from.path), taken);
       tree.push({ path: from.path, mode: '100644', type: 'blob', sha: null });
@@ -199,7 +201,9 @@ async function commit(request, env) {
 
     const parts = [];
     if (add.length) parts.push(`add ${add.length}`);
-    if (move.length) parts.push(`move ${move.length}`);
+    const renames = move.filter((m) => m.name !== undefined).length;
+    if (renames) parts.push(`rename ${renames}`);
+    if (move.length - renames) parts.push(`move ${move.length - renames}`);
     if (del.length) parts.push(`delete ${del.length}`);
     const message = `Admin: ${parts.join(', ')} wallpaper${add.length + move.length + del.length === 1 ? '' : 's'}`;
 

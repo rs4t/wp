@@ -2,6 +2,9 @@
 // egorz.com/wp/ by stripping the /wp prefix before looking up assets.
 // /api/* is the admin API (see api.js).
 import { handleApi } from './api.js';
+import { handleStats } from './stats.js';
+
+export { Stats } from './stats.js';
 
 const PREFIX = '/wp';
 
@@ -17,7 +20,11 @@ export default {
     }
     if (prefixed) url.pathname = url.pathname.slice(PREFIX.length);
 
-    if (url.pathname.startsWith('/api/')) return handleApi(request, env, url.pathname);
+    if (url.pathname.startsWith('/api/')) {
+      // Public download counter first; everything else is the password-protected admin API.
+      const stats = await handleStats(request, env, url.pathname);
+      return stats || handleApi(request, env, url.pathname);
+    }
     if (!prefixed) return env.ASSETS.fetch(request);
 
     const res = await env.ASSETS.fetch(new Request(url, request));
