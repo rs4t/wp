@@ -4,6 +4,10 @@ The source for **[wp.egorz.com](https://wp.egorz.com)** and **[egorz.com/wp](htt
 
 ## Adding wallpapers
 
+**Easiest: the admin page** at [wp.egorz.com/admin/](https://wp.egorz.com/admin/) (or `egorz.com/wp/admin/`). Log in with the admin password, drop in images, pick a category and press upload. You can also select existing wallpapers to move them to another category or delete them. Each save is one commit to this repo, and the site rebuilds in about 2–3 minutes.
+
+**Or by hand in git:**
+
 1. Put image files in `wallpapers/<category>/`, e.g. `wallpapers/landscape/misty-alps_01.jpg`.
 2. Commit and push to `main`.
 
@@ -50,3 +54,17 @@ npm run dev        # builds, then serves at http://localhost:8788/ and /wp/
    `worker/index.js` strips the `/wp` prefix, so one build serves both. Every asset path in the site is relative, which is why the same files work at either location. If you'd rather attach domains in the dashboard, delete the `routes` block.
 
 **Using Cloudflare Pages instead?** Set the build command to `npm run build` and the output directory to `dist`. Pages can serve `wp.egorz.com` directly, but `egorz.com/wp` still needs the Worker above, so Workers is the simpler route.
+
+### Admin page setup (one time)
+
+The admin page commits to this repo through the GitHub API, so the Worker needs two secrets:
+
+1. **GitHub token:** GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
+   - Repository access: *Only select repositories* → `rs4t/wp`
+   - Permissions → Repository permissions → **Contents: Read and write**
+   - Pick an expiry (or none), generate, and copy the token.
+2. **Cloudflare:** Workers & Pages → your Worker → **Settings → Variables and Secrets** → Add. Choose the type **Secret** for both:
+   - `GITHUB_TOKEN`: the token from step 1
+   - `ADMIN_PASSWORD`: the password admins will use (make it long)
+
+Secrets survive redeploys. Changing `ADMIN_PASSWORD` logs everyone out.

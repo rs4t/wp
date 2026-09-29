@@ -209,8 +209,10 @@ const entries = files.map((abs) => {
 
 const concurrency = Math.max(1, Math.min(3, (os.availableParallelism?.() ?? os.cpus().length) - 1));
 let done = 0;
-const items = await pool(entries, concurrency, async (e) => {
-  const r = await processImage(e.abs, e.slug);
+const items = (await pool(entries, concurrency, async (e) => {
+  let r;
+  try { r = await processImage(e.abs, e.slug); }
+  catch (err) { log(`warning: skipping ${e.rel} — not a readable image (${err.message})`); return null; }
   const added = dates.get(e.rel) ?? (await stat(e.abs)).mtimeMs;
   done++;
   if (done % 5 === 0 || done === entries.length) log(`processed ${done}/${entries.length}`);
@@ -230,13 +232,14 @@ const items = await pool(entries, concurrency, async (e) => {
     og: r.og,
     o: r.orig,
     file: path.basename(r.orig),
+    src: e.rel,
   };
-});
+})).filter(Boolean);
 
 const now = Date.now();
 items.sort((a, b) => b.added - a.added || a.title.localeCompare(b.title));
 // "new" = recent, but never the first batch: when everything is new, nothing is.
-const firstBatch = Math.min(...items.map((i) => i.added)) + 864e5;
+const firstBatch = items.reduce((m, i) => Math.min(m, i.added), Infinity) + 864e5;
 for (const it of items) it.new = now - it.added < NEW_DAYS * 864e5 && it.added > firstBatch;
 
 const catCounts = new Map();
@@ -248,6 +251,7 @@ const manifest = { name: SITE_NAME, generated: now, widths: THUMB_WIDTHS, catego
 const manifestJson = JSON.stringify(manifest);
 const mHash = hashOf(manifestJson);
 await writeFile(path.join(OUT, `a/manifest.${mHash}.json`), manifestJson);
+await writeFile(path.join(OUT, 'manifest.json'), manifestJson); // unhashed copy for the admin page
 
 // Static assets, content-hashed for immutable caching.
 for (const [key, file] of [['css', 'styles.css'], ['js', 'app.js']]) {
@@ -259,6 +263,8 @@ for (const [key, file] of [['css', 'styles.css'], ['js', 'app.js']]) {
 }
 await copyFile(path.join(SRC, 'favicon.svg'), path.join(OUT, 'favicon.svg'));
 await copyFile(path.join(SRC, '_headers'), path.join(OUT, '_headers'));
+await mkdir(path.join(OUT, 'admin'), { recursive: true });
+for (const f of await readdir(path.join(SRC, 'admin'))) await copyFile(path.join(SRC, 'admin', f), path.join(OUT, 'admin', f));
 
 const tpl = await readFile(path.join(SRC, 'template.html'), 'utf8');
 const n = items.length;
