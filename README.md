@@ -42,7 +42,7 @@ npm run dev        # builds, then serves at http://localhost:8788/ and /wp/
 ## Cloudflare setup (Workers + Git)
 
 1. Cloudflare dashboard → **Workers & Pages → Create → Import a repository** → `rs4t/wp`.
-2. Build command: `npm run build`. Deploy command: `npx wrangler deploy`.
+2. Deploy command: `npx wrangler deploy`. Leave the build command empty: `wrangler.jsonc` runs `npm run build` on every deploy.
 3. `wrangler.jsonc` already declares both domains:
    - `wp.egorz.com` as a custom domain
    - `egorz.com/wp` and `egorz.com/wp/*` as routes on the `egorz.com` zone
