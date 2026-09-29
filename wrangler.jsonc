@@ -10,13 +10,15 @@
     "binding": "ASSETS",
     "not_found_handling": "404-page",
     "html_handling": "auto-trailing-slash",
-    // Only /wp paths need the Worker; everything else is served straight from assets.
-    "run_worker_first": ["/wp", "/wp/*"]
+    // Only /wp paths and the admin API need the Worker; everything else is served straight from assets.
+    "run_worker_first": ["/wp", "/wp/*", "/api/*"]
   },
   "routes": [
     { "pattern": "wp.egorz.com", "custom_domain": true },
     { "pattern": "egorz.com/wp", "zone_name": "egorz.com" },
     { "pattern": "egorz.com/wp/*", "zone_name": "egorz.com" }
   ],
+  // Admin uploads commit here. Secrets ADMIN_PASSWORD and GITHUB_TOKEN are set in the dashboard.
+  "vars": { "GITHUB_REPO": "rs4t/wp", "GITHUB_BRANCH": "main" },
   "observability": { "enabled": true }
 }

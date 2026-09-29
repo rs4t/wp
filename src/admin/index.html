@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>admin — egor's wallpapers</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0a0a0b">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<!-- login -->
+<section class="login" id="login" hidden>
+  <form id="loginForm" autocomplete="on">
+    <h1 class="mark">egor's <em>wallpapers</em></h1>
+    <p class="mono dim">admin</p>
+    <input type="password" id="pw" name="password" placeholder="password" autocomplete="current-password" required autofocus>
+    <button class="btn solid" type="submit">log in</button>
+    <p class="err mono" id="loginErr" role="alert"></p>
+  </form>
+</section>
+
+<!-- app -->
+<div class="app" id="app" hidden>
+  <header class="top">
+    <a class="mark" href="../">egor's <em>wallpapers</em></a>
+    <span class="tag mono">admin</span>
+    <nav class="top-actions">
+      <a class="btn ghost" href="../" target="_blank" rel="noopener">view site ↗</a>
+      <button class="btn ghost" id="logout" type="button">log out</button>
+    </nav>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="panel">
+    <h2>Add wallpapers</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="files" accept="image/jpeg,image/png,image/webp,image/avif,image/tiff,.jpg,.jpeg,.png,.webp,.avif,.tif,.tiff" multiple>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>
+      <span><b>Drop wallpapers here</b> or tap to choose</span>
+      <span class="mono dim">jpg · png · webp · avif · tiff — up to 50 MB each</span>
+    </label>
+
+    <div class="queue-wrap" id="queueWrap" hidden>
+      <div class="field">
+        <span class="label mono">category</span>
+        <div class="cats" id="upCats"></div>
+      </div>
+      <ul class="queue" id="queue"></ul>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="lib-head">
+      <h2>Library <span class="mono dim" id="libCount"></span></h2>
+      <button class="btn ghost small" id="refresh" type="button">refresh</button>
+    </div>
+    <div class="cats" id="libCats"></div>
+    <ul class="lib" id="lib"></ul>
+    <p class="mono dim hint">Tap wallpapers to select them, then move or delete.</p>
+  </section>
+
+  <!-- sticky action bars -->
+  <div class="dock" id="upDock" hidden>
+    <span class="mono" id="upSummary"></span>
+    <button class="btn ghost" id="clearQueue" type="button">clear</button>
+    <button class="btn solid" id="upload" type="button">upload</button>
+  </div>
+  <div class="dock" id="selDock" hidden>
+    <span class="mono" id="selSummary"></span>
+    <select id="moveTo" aria-label="Move to category"></select>
+    <button class="btn danger" id="delete" type="button">delete</button>
+    <button class="btn ghost" id="clearSel" type="button" aria-label="Clear selection">✕</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+<script src="admin.js" defer></script>
+</body>
+</html>
