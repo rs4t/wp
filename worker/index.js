@@ -1,44 +1,28 @@
-// Serves the static build from dist/ on wp.egorz.com, and the same files under
-// egorz.com/wp/ by stripping the /wp prefix before looking up assets.
-// /api/* is the admin API (see api.js).
+// Serves the static build from dist/ on wp.egorz.com. The old egorz.com/wp
+// address permanently redirects there, so previously shared links still work.
+// /api/* is the download counter (stats.js) and the admin API (api.js).
 import { handleApi } from './api.js';
 import { handleStats } from './stats.js';
 
 export { Stats } from './stats.js';
 
-const PREFIX = '/wp';
+const HOME = 'https://wp.egorz.com';
+const OLD_PREFIX = '/wp';
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const prefixed = url.pathname === PREFIX || url.pathname.startsWith(PREFIX + '/');
 
-    // Relative asset paths need the trailing slash: /wp -> /wp/
-    if (url.pathname === PREFIX) {
-      url.pathname = PREFIX + '/';
-      return Response.redirect(url.href, 308);
+    if (url.pathname === OLD_PREFIX || url.pathname.startsWith(OLD_PREFIX + '/')) {
+      const rest = url.pathname.slice(OLD_PREFIX.length) || '/';
+      return Response.redirect(HOME + rest + url.search, 301);
     }
-    if (prefixed) url.pathname = url.pathname.slice(PREFIX.length);
 
     if (url.pathname.startsWith('/api/')) {
       // Public download counter first; everything else is the password-protected admin API.
       const stats = await handleStats(request, env, url.pathname);
       return stats || handleApi(request, env, url.pathname);
     }
-    if (!prefixed) return env.ASSETS.fetch(request);
-
-    const res = await env.ASSETS.fetch(new Request(url, request));
-
-    // Asset-level redirects (e.g. /w/name -> /w/name/) must keep the prefix.
-    const loc = res.headers.get('Location');
-    if (loc && res.status >= 300 && res.status < 400) {
-      const target = new URL(loc, url);
-      if (target.origin === url.origin && !target.pathname.startsWith(PREFIX + '/')) {
-        const headers = new Headers(res.headers);
-        headers.set('Location', PREFIX + target.pathname + target.search);
-        return new Response(null, { status: res.status, headers });
-      }
-    }
-    return res;
+    return env.ASSETS.fetch(request);
   },
 };

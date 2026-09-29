@@ -10,11 +10,12 @@
     "binding": "ASSETS",
     "not_found_handling": "404-page",
     "html_handling": "auto-trailing-slash",
-    // Only /wp paths and the admin API need the Worker; everything else is served straight from assets.
+    // /wp paths (old address, redirected) and the API need the Worker; everything else is plain assets.
     "run_worker_first": ["/wp", "/wp/*", "/api/*"]
   },
   "routes": [
     { "pattern": "wp.egorz.com", "custom_domain": true },
+    // Old address: redirects to wp.egorz.com (see worker/index.js).
     { "pattern": "egorz.com/wp", "zone_name": "egorz.com" },
     { "pattern": "egorz.com/wp/*", "zone_name": "egorz.com" }
   ],

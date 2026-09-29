@@ -1,4 +1,4 @@
-// Local preview of dist/: serves at / and also under /wp/ to mimic egorz.com/wp.
+// Local preview of dist/ at http://localhost:8788/.
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,8 +10,6 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 
 
 http.createServer(async (req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  if (p === '/wp') { res.writeHead(308, { Location: '/wp/' }); return res.end(); }
-  if (p.startsWith('/wp/')) p = p.slice(3);
   let file = path.join(DIST, p);
   if (!file.startsWith(DIST)) { res.writeHead(403); return res.end(); }
   try {
@@ -26,4 +24,4 @@ http.createServer(async (req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(await readFile(path.join(DIST, '404.html')).catch(() => 'not found'));
   }
-}).listen(PORT, () => console.log(`serving dist/ at http://localhost:${PORT}/ and http://localhost:${PORT}/wp/`));
+}).listen(PORT, () => console.log(`serving dist/ at http://localhost:${PORT}/`));
