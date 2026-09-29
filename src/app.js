@@ -392,8 +392,8 @@
   function setInfo(it, animate) {
     const idx = view.indexOf(it);
     const n = view.length;
-    lbIdx.textContent = idx >= 0 ? `${pad(idx + 1)} / ${pad(n)}${it.cat ? ` · ${it.cat}` : ''}` : (it.cat || '');
-    lbTitle.textContent = it.title;
+    lbIdx.textContent = idx >= 0 ? `${pad(idx + 1)} / ${pad(n)}` : '';
+    lbTitle.innerHTML = it.cat ? `<span class="lb-cat">${escapeHtml(it.cat)}/</span>${escapeHtml(it.name)}` : escapeHtml(it.title);
     lbSpec.innerHTML = `${it.w} × ${it.h}<i>/</i>${it.ratio}<i>/</i>${mb(it.size)}<i>/</i>${it.file.split('.').pop().toUpperCase()}`;
     dl.href = url(it.o);
     dl.setAttribute('download', it.file);

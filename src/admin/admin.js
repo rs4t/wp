@@ -22,7 +22,6 @@
   const mb = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const extOf = (n) => (n.match(/\.([^.]+)$/)?.[1] || '').toLowerCase();
-  const titleize = (s) => s.replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
   const catName = (c) => c || 'no category';
 
   function toast(msg) {
@@ -219,7 +218,7 @@
       const ext = extOf(file.name);
       if (!IMAGE_EXT.includes(ext)) { skipped.push(`${file.name} (not an image)`); continue; }
       if (file.size > MAX) { skipped.push(`${file.name} (over 50 MB)`); continue; }
-      const q = { id: Math.random().toString(36).slice(2), file, ext, name: titleize(file.name.replace(/\.[^.]+$/, '')), url: URL.createObjectURL(file), status: 'ready' };
+      const q = { id: Math.random().toString(36).slice(2), file, ext, name: file.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(file), status: 'ready' };
       state.queue.push(q);
       const img = new Image();
       img.onload = () => { q.res = `${img.naturalWidth}×${img.naturalHeight}`; const m = document.querySelector(`[data-q="${q.id}"] .q-res`); if (m) m.textContent = q.res; };

@@ -34,10 +34,6 @@ const slugify = (s) =>
   s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wallpaper';
 
-const titleize = (s) =>
-  s.replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim()
-    .replace(/\b\p{L}/gu, (c) => c.toUpperCase());
-
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const hex = ([r, g, b]) => '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
@@ -100,7 +96,7 @@ async function pool(items, limit, fn) {
 
 // ---------- image processing ----------
 
-async function processImage(file, slug) {
+async function processImage(file, slug, downloadStem) {
   const buf = await readFile(file);
   const hash = hashOf(buf);
   const input = sharp(buf, { failOn: 'none', limitInputPixels: false });
@@ -141,7 +137,7 @@ async function processImage(file, slug) {
   const dom = st.dominant ? hex([st.dominant.r, st.dominant.g, st.dominant.b]) : palette[4];
 
   // Original download: served untouched unless it breaks the host's size limit.
-  const fname = path.basename(file);
+  const fname = downloadStem + path.extname(file).toLowerCase();
   let orig = `o/${hash}/${fname}`;
   let size = buf.length;
   await mkdir(path.join(OUT, 'o', hash), { recursive: true });
@@ -193,16 +189,17 @@ const files = (await walk(WALLS)).sort();
 const dates = gitAddedDates();
 log(`found ${files.length} wallpaper${files.length === 1 ? '' : 's'}`);
 
-// Slugs: filename first, category-prefixed only when names collide.
+// Names repeat across categories (1.jpg, 2.jpg…), so the category is part of
+// every title, permalink slug and download filename.
 const used = new Set();
 const entries = files.map((abs) => {
   const rel = path.relative(ROOT, abs).split(path.sep).join('/');
   const parts = path.relative(WALLS, abs).split(path.sep);
   const category = parts.length > 1 ? parts[0] : null;
   const stem = path.basename(abs, path.extname(abs));
-  let slug = slugify(stem);
-  if (used.has(slug) && category) slug = slugify(`${category}-${stem}`);
-  for (let n = 2; used.has(slug); n++) slug = `${slugify(stem)}-${n}`;
+  const base = slugify(category ? `${category}-${stem}` : stem);
+  let slug = base;
+  for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
   used.add(slug);
   return { abs, rel, category, stem, slug };
 });
@@ -211,14 +208,15 @@ const concurrency = Math.max(1, Math.min(3, (os.availableParallelism?.() ?? os.c
 let done = 0;
 const items = (await pool(entries, concurrency, async (e) => {
   let r;
-  try { r = await processImage(e.abs, e.slug); }
+  try { r = await processImage(e.abs, e.slug, e.category ? `${e.category}-${e.stem}` : e.stem); }
   catch (err) { log(`warning: skipping ${e.rel} — not a readable image (${err.message})`); return null; }
   const added = dates.get(e.rel) ?? (await stat(e.abs)).mtimeMs;
   done++;
   if (done % 5 === 0 || done === entries.length) log(`processed ${done}/${entries.length}`);
   return {
     id: e.slug,
-    title: titleize(e.stem),
+    title: e.category ? `${e.category}/${e.stem}` : e.stem,
+    name: e.stem,
     cat: e.category,
     w: r.w, h: r.h,
     ratio: ratioLabel(r.w, r.h),
@@ -237,7 +235,7 @@ const items = (await pool(entries, concurrency, async (e) => {
 })).filter(Boolean);
 
 const now = Date.now();
-items.sort((a, b) => b.added - a.added || a.title.localeCompare(b.title));
+items.sort((a, b) => b.added - a.added || a.title.localeCompare(b.title, 'en', { numeric: true }));
 // "new" = recent, but never the first batch: when everything is new, nothing is.
 const firstBatch = items.reduce((m, i) => Math.min(m, i.added), Infinity) + 864e5;
 for (const it of items) it.new = now - it.added < NEW_DAYS * 864e5 && it.added > firstBatch;
