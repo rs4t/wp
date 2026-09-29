@@ -71,17 +71,34 @@
   $('#logout').addEventListener('click', async () => { await api('logout', { method: 'POST' }).catch(() => {}); showLogin(); });
 
   // ---------- data ----------
+  // The live site's manifest says what is deployed; anything in the repo but
+  // not in it yet is still building. Poll until everything is live.
+  const fetchManifest = () => fetch(SITE + 'manifest.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] }));
+  let pollT = 0;
+  function renderStatus() {
+    const building = state.files.filter((f) => !state.thumbs.has(f.path)).length;
+    const el = $('#status');
+    el.className = 'status mono ' + (building ? 'busy' : 'live');
+    el.textContent = !state.files.length ? '' : building ? `${building} building…` : 'all live ✓';
+    clearTimeout(pollT);
+    if (building) pollT = setTimeout(async () => {
+      const m = await fetchManifest();
+      state.thumbs = new Map(m.items.filter((i) => i.src).map((i) => [i.src, SITE + i.t + '-480.webp']));
+      renderLib(); renderStatus();
+    }, 20000);
+  }
+
   async function load() {
     $('#lib').innerHTML = '<li class="empty mono">loading…</li>';
     try {
       const [list, manifest] = await Promise.all([
         api('list'),
-        fetch(SITE + 'manifest.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })),
+        fetchManifest(),
       ]);
       state.files = list.files;
       state.thumbs = new Map(manifest.items.filter((i) => i.src).map((i) => [i.src, SITE + i.t + '-480.webp']));
       for (const p of [...state.sel]) if (!state.files.some((f) => f.path === p)) state.sel.delete(p);
-      renderCats(); renderLib(); renderSel();
+      renderCats(); renderLib(); renderSel(); renderStatus();
     } catch (err) {
       if (err.message !== 'Logged out') $('#lib').innerHTML = `<li class="empty mono">${esc(err.message)}</li>`;
     }
@@ -163,7 +180,17 @@
     const n = state.sel.size;
     $('#selDock').hidden = n === 0 || state.queue.length > 0;
     $('#selSummary').textContent = `${n} selected`;
+    $('#rename').hidden = n !== 1;
   }
+  $('#rename').addEventListener('click', async () => {
+    const [path] = state.sel;
+    const f = state.files.find((x) => x.path === path);
+    if (!f) return;
+    const old = f.name.replace(/\.[^.]+$/, '');
+    const name = prompt('New name:', old)?.trim();
+    if (!name || name === old) return;
+    await save({ move: [{ from: path, name }] }, `Renamed to ${name}`);
+  });
   $('#clearSel').addEventListener('click', () => { state.sel.clear(); renderLib(); renderSel(); });
 
   $('#moveTo').addEventListener('change', async (e) => {
