@@ -407,7 +407,7 @@ ${items.map((it) => `  <url><loc>${SITE_URL}w/${it.id}/</loc><lastmod>${day(it.a
 `);
 await writeFile(path.join(OUT, 'robots.txt'), `User-agent: *\nDisallow: /admin/\nDisallow: /api/\n\nSitemap: ${SITE_URL}sitemap.xml\n`);
 
-// Standalone 404: works under both / and /wp/ without knowing which.
-await writeFile(path.join(OUT, '404.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not found — ${esc(SITE_NAME)}</title><meta name="robots" content="noindex"><style>html{background:#0a0a0b;color:#ecebe8;font:15px/1.5 ui-sans-serif,system-ui,sans-serif}body{min-height:100vh;margin:0;display:grid;place-items:center;text-align:center}em{font:italic 44px/1 Georgia,serif;display:block;margin-bottom:14px}a{color:#8b8a86}</style></head><body><div><em>Nothing here.</em><a id="h" href="/">back to the wallpapers →</a></div><script>var p=location.pathname;if(p==='/wp'||p.indexOf('/wp/')===0)document.getElementById('h').href='/wp/'</script></body></html>`);
+// Standalone 404 page.
+await writeFile(path.join(OUT, '404.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not found — ${esc(SITE_NAME)}</title><meta name="robots" content="noindex"><style>html{background:#0a0a0b;color:#ecebe8;font:15px/1.5 ui-sans-serif,system-ui,sans-serif}body{min-height:100vh;margin:0;display:grid;place-items:center;text-align:center}em{font:italic 44px/1 Georgia,serif;display:block;margin-bottom:14px}a{color:#8b8a86}</style></head><body><div><em>Nothing here.</em><a href="/">back to the wallpapers →</a></div></body></html>`);
 
 log(`done: ${n} wallpapers (${reused} reused, ${n - reused} processed), ${categories.length} categories in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
