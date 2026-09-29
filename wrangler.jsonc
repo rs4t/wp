@@ -3,6 +3,8 @@
   "name": "wp",
   "main": "worker/index.js",
   "compatibility_date": "2026-09-01",
+  // wrangler runs this before every deploy, so `npx wrangler deploy` alone is enough.
+  "build": { "command": "npm run build" },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
