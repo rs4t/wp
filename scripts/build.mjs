@@ -151,6 +151,12 @@ async function processImage(file, slug, downloadStem) {
       out = await sharp(buf, { limitInputPixels: false }).rotate().jpeg({ quality: q, mozjpeg: true, chromaSubsampling: '4:4:4' }).toBuffer();
       q -= 4;
     } while (out.length > MAX_ASSET_BYTES && q > 70);
+    // Still too big at q70 (gigantic images): shrink until it fits the host limit.
+    for (let scale = 0.9; out.length > MAX_ASSET_BYTES && scale > 0.3; scale -= 0.1) {
+      out = await sharp(buf, { limitInputPixels: false }).rotate()
+        .resize({ width: Math.round(width * scale), withoutEnlargement: true })
+        .jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+    }
     await writeFile(path.join(OUT, orig), out);
     size = out.length;
     log(`note: ${fname} is ${(buf.length / 1048576).toFixed(1)} MB (over 25 MB) — download re-encoded to JPEG q${q + 4}`);

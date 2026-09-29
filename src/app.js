@@ -67,11 +67,11 @@
     $('#sort').addEventListener('click', () => {
       sort = SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length];
       if (sort === 'random') reshuffle();
-      applyView(true); syncQuery();
+      toGridTop(); applyView(true); syncQuery();
     });
 
     let rt;
-    addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(false); movePill(false); }, 120); });
+    addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(false); movePill(false); refit(); }, 120); });
     addEventListener('scroll', onScroll, { passive: true });
     addEventListener('popstate', onRoute);
     addEventListener('keydown', onKey);
@@ -83,10 +83,17 @@
       openLightbox(byId.get(initial), { fromTile: false, push: false });
     } else if (!reduced && items.length && !store.get('intro')) {
       store.set('intro', '1');
-      intro().then(() => revealObserve());
+      intro();
     } else {
       revealObserve();
     }
+  }
+
+  // A new filter/sort starts at the top; otherwise a short result list can
+  // leave you scrolled past the end, looking at an empty page.
+  function toGridTop() {
+    // Far down: jump (a smooth scroll gets cut off when the page shrinks). Close: glide.
+    if (scrollY > 0) scrollTo({ top: 0, behavior: reduced || scrollY > innerHeight ? 'instant' : 'smooth' });
   }
 
   function reshuffle() {
@@ -105,7 +112,7 @@
       b.innerHTML = `${name}<sup>${count}</sup>`;
       b.addEventListener('click', () => {
         if (cat === id) return;
-        cat = id; applyView(true); syncQuery();
+        cat = id; toGridTop(); applyView(true); syncQuery();
         b.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
       });
       chipsEl.append(b);
@@ -382,6 +389,13 @@
     return { x: Math.round((innerWidth - w) / 2), y: Math.round(top + (ah - h) / 2), w, h };
   }
 
+  function refit() {
+    if (!fig || !cur) return;
+    const r = fitRect(cur);
+    Object.assign(fig.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
+    fig._rect = r;
+  }
+
   function makeFig(it) {
     const r = fitRect(it);
     const f = document.createElement('figure');
@@ -613,7 +627,7 @@
   addEventListener('pointercancel', endSwipe);
 
   function onKey(e) {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || $('.intro')) return;
     if (!lb.hidden) {
       if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
@@ -633,6 +647,7 @@
   }
 
   function onRoute() {
+    if (busy) { clearTimeout(onRoute.t); onRoute.t = setTimeout(onRoute, 120); return; }
     const m = location.href.startsWith(ROOT.href) && location.href.slice(ROOT.href.length).match(/^w\/([^/?#]+)\/?/);
     const id = m ? decodeURIComponent(m[1]) : null;
     if (id && byId.has(id)) {
