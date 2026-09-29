@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<meta name="theme-color" content="#0a0a0b">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="{{url}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="egor's wallpapers">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{url}}">
+<meta property="og:image" content="{{image}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{title}}">
+<meta name="twitter:description" content="{{description}}">
+<meta name="twitter:image" content="{{image}}">
+<link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="stylesheet" href="{{root}}{{css}}">
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body data-root="{{root}}" data-initial="{{initial}}">
+
+<header class="bar" id="bar">
+  <div class="bar-row">
+    <a class="mark" href="{{root}}" aria-label="egor's wallpapers — home"><span>egor's</span> <em>wallpapers</em></a>
+    <span class="count mono" id="count" aria-live="polite"></span>
+    <div class="actions">
+      <button class="btn ghost" id="shuffle" type="button" title="Random wallpaper (R)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+        <span>shuffle</span>
+      </button>
+    </div>
+  </div>
+  <div class="bar-row sub">
+    <nav class="chips" id="chips" aria-label="Categories"><span class="chip-pill" id="pill" aria-hidden="true"></span></nav>
+    <button class="sort mono" id="sort" type="button" aria-label="Toggle sort order">newest</button>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="grid" aria-label="Wallpapers"></div>
+  <div class="empty" id="empty" hidden>
+    <em>Nothing here yet.</em>
+    <span class="mono">drop images into wallpapers/&lt;category&gt;/ and push</span>
+  </div>
+</main>
+
+<footer class="foot mono" id="foot"></footer>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Wallpaper viewer" hidden>
+  <div class="lb-amb" aria-hidden="true"><div class="amb"></div><div class="amb"></div><div class="lb-shade"></div></div>
+  <div class="lb-stage" id="stage"></div>
+  <button class="lb-nav prev" id="prev" type="button" aria-label="Previous wallpaper"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <button class="lb-nav next" id="next" type="button" aria-label="Next wallpaper"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+  <button class="lb-close" id="close" type="button" aria-label="Close (Esc)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  <div class="lb-info" id="info">
+    <div class="lb-text">
+      <span class="lb-idx mono" id="lbIdx"></span>
+      <h2 class="lb-title" id="lbTitle"></h2>
+      <p class="lb-spec mono" id="lbSpec"></p>
+    </div>
+    <div class="lb-actions">
+      <button class="btn ghost" id="copy" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span>copy link</span></button>
+      <a class="btn solid" id="dl" href="#" download><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>download</span><span class="mono dim" id="dlSize"></span></a>
+    </div>
+  </div>
+</div>
+
+<div class="grain" aria-hidden="true"></div>
+<noscript><p class="noscript">This gallery needs JavaScript to browse. Sorry!</p></noscript>
+<script src="{{root}}{{js}}" defer></script>
+</body>
+</html>

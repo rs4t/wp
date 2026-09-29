@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wp",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash",
+    // Only /wp paths need the Worker; everything else is served straight from assets.
+    "run_worker_first": ["/wp", "/wp/*"]
+  },
+  "routes": [
+    { "pattern": "wp.egorz.com", "custom_domain": true },
+    { "pattern": "egorz.com/wp", "zone_name": "egorz.com" },
+    { "pattern": "egorz.com/wp/*", "zone_name": "egorz.com" }
+  ],
+  "observability": { "enabled": true }
+}
