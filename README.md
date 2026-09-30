@@ -1,3 +1,6 @@
+Want to help out with the project (recommendations, new wallpapers, ect)?
+Add me on discord: @o8mu      or telegram: [exfxx](https://t.me/exfxx)
+
 # egor's wallpapers
 
 A quiet, dark gallery for my wallpaper collection. Browse, preview, and download the originals at full resolution.
