@@ -1,4 +1,4 @@
-Want to help out with the project (recommendations, new wallpapers, ect)?
+Want to help out with the project (recommendations, new wallpapers, ect)? 
 Add me on discord: @o8mu      or telegram: [exfxx](https://t.me/exfxx)
 
 # egor's wallpapers
