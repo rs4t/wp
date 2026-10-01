@@ -69,6 +69,8 @@
 
           <label class="sub-field"><span class="label mono">name or handle <i>shown as credit</i></span>
             <input name="name" maxlength="60" required placeholder="@you"></label>
+          <label class="sub-field" data-for="wallpaper"><span class="label mono">your website or profile <i>optional, linked from the credit</i></span>
+            <input name="link" maxlength="300" placeholder="instagram, artstation, your site…"></label>
           <label class="sub-field"><span class="label mono">email <i>optional, never shown — only so I can reply</i></span>
             <input name="email" type="email" maxlength="120" placeholder="you@example.com"></label>
           <label class="sub-field"><span class="label mono">message <i>optional</i></span>
@@ -288,7 +290,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: st.type, token, consent: true,
-          name: v('name'), email: v('email'), message: v('message'),
+          name: v('name'), link: st.type === 'wallpaper' ? v('link') : '', email: v('email'), message: v('message'),
           caption: st.type === 'setup' ? v('caption') : '', category: st.type === 'wallpaper' ? v('category') : '',
           wallpapers: st.type === 'setup' ? st.picks : [],
           files: st.files.map((f) => ({ name: f.file.name, size: f.file.size, type: f.file.type })),
