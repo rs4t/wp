@@ -14,6 +14,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
 const WALLS = process.env.WALLPAPERS_DIR ? path.resolve(process.env.WALLPAPERS_DIR) : path.join(ROOT, 'wallpapers');
 const OUT = path.join(ROOT, 'dist');
+const COMMUNITY = process.env.COMMUNITY_DIR ? path.resolve(process.env.COMMUNITY_DIR) : path.join(ROOT, 'community');
 
 const SITE_URL = (process.env.SITE_URL || 'https://wp.egorz.com').replace(/\/+$/, '') + '/';
 const SITE_NAME = "egor's wallpapers";
@@ -227,7 +228,7 @@ async function loadPrevious() {
     const prev = await res.json();
     if (prev.pipeline !== PIPELINE) { log(`previous deploy used pipeline ${prev.pipeline ?? 1}, reprocessing everything once`); return new Map(); }
     log(`reusing processed images from ${CACHE_URL}`);
-    return new Map(prev.items.filter((i) => i.hash).map((i) => [i.hash, i]));
+    return new Map([...prev.items, ...(prev.setups || [])].filter((i) => i.hash).map((i) => [i.hash, i]));
   } catch (err) {
     log(`no previous deploy to reuse (${err.message}); processing everything`);
     return new Map();
@@ -255,7 +256,7 @@ async function reuseImage(buf, hash, file, slug, downloadStem, old) {
 
 // ---------- pages ----------
 
-function renderPage(tpl, { root, title, description, url, image, color, initial }) {
+function renderPage(tpl, { root, title, description, url, image, color, initial, page = 'gallery' }) {
   return tpl
     .replaceAll('{{root}}', root)
     .replaceAll('{{title}}', esc(title))
@@ -264,8 +265,10 @@ function renderPage(tpl, { root, title, description, url, image, color, initial 
     .replaceAll('{{image}}', esc(image || ''))
     .replaceAll('{{color}}', esc(color || '#0a0a0b'))
     .replaceAll('{{initial}}', esc(initial || ''))
+    .replaceAll('{{page}}', page)
     .replaceAll('{{css}}', assets.css)
-    .replaceAll('{{js}}', assets.js);
+    .replaceAll('{{js}}', assets.js)
+    .replaceAll('{{submit}}', assets.submit);
 }
 
 const assets = {};
@@ -299,19 +302,28 @@ const entries = files.map((abs) => {
 
 const concurrency = Math.max(1, Math.min(3, (os.availableParallelism?.() ?? os.cpus().length) - 1));
 let done = 0, reused = 0;
-const items = (await pool(entries, concurrency, async (e) => {
-  let r;
-  const downloadStem = e.category ? `${e.category}-${e.stem}` : e.stem;
+// Processed files for one image: reused from the previous deploy when possible.
+async function imageFor(abs, slug, downloadStem, label) {
   try {
-    const buf = await readFile(e.abs);
+    const buf = await readFile(abs);
     const hash = hashOf(buf);
     const old = previous.get(hash);
     if (old) {
-      try { r = await reuseImage(buf, hash, e.abs, e.slug, downloadStem, old); reused++; }
-      catch (err) { log(`note: could not reuse ${e.rel} (${err.message}); processing it`); }
+      try { const r = await reuseImage(buf, hash, abs, slug, downloadStem, old); reused++; return r; }
+      catch (err) { log(`note: could not reuse ${label} (${err.message}); processing it`); }
     }
-    if (!r) r = await processImage(buf, hash, e.abs, e.slug, downloadStem);
-  } catch (err) { log(`warning: skipping ${e.rel} — not a readable image (${err.message})`); return null; }
+    return await processImage(buf, hash, abs, slug, downloadStem);
+  } catch (err) { log(`warning: skipping ${label} — not a readable image (${err.message})`); return null; }
+}
+
+// Credits for wallpapers sent in by other people: { "wallpapers/cat/name.jpg": { name, link } }.
+const credits = await readFile(path.join(WALLS, 'credits.json'), 'utf8').then(JSON.parse).catch(() => ({}));
+
+const items = (await pool(entries, concurrency, async (e) => {
+  const downloadStem = e.category ? `${e.category}-${e.stem}` : e.stem;
+  const r = await imageFor(e.abs, e.slug, downloadStem, e.rel);
+  if (!r) return null;
+  const srcKey = 'wallpapers/' + path.relative(WALLS, e.abs).split(path.sep).join('/');
   const added = r.added ?? dates.get(e.rel) ?? (await stat(e.abs)).mtimeMs;
   done++;
   if (done % 10 === 0 || done === entries.length) log(`processed ${done}/${entries.length}`);
@@ -334,7 +346,8 @@ const items = (await pool(entries, concurrency, async (e) => {
     og: r.og,
     o: r.orig,
     file: path.basename(r.orig),
-    src: e.rel,
+    src: srcKey,
+    ...(credits[srcKey]?.name ? { credit: { name: credits[srcKey].name, ...(credits[srcKey].link ? { link: credits[srcKey].link } : {}) } } : {}),
   };
 })).filter(Boolean);
 
@@ -354,14 +367,31 @@ for (const it of items) for (const c of it.colors) colorCounts.set(c, (colorCoun
 const COLOR_ORDER = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink', 'light', 'gray', 'dark'];
 const colors = COLOR_ORDER.filter((c) => colorCounts.has(c)).map((id) => ({ id, count: colorCounts.get(id) }));
 
-const manifest = { name: SITE_NAME, generated: now, pipeline: PIPELINE, widths: THUMB_WIDTHS, categories, colors, items };
+// Community setups: approved photos of people's desks using these wallpapers.
+const setupList = await readFile(path.join(COMMUNITY, 'setups.json'), 'utf8').then(JSON.parse).catch(() => []);
+const idByHash = new Map(items.map((it) => [it.hash, it.id]));
+const setups = (await pool(setupList, concurrency, async (st) => {
+  const abs = path.join(COMMUNITY, 'setups', path.basename(st.image || ''));
+  const r = await imageFor(abs, `setup-${st.id}`, `setup-${st.id}`, `community setup ${st.id}`);
+  if (!r) return null;
+  return {
+    id: st.id, name: st.name, ...(st.link ? { link: st.link } : {}), caption: st.caption || '',
+    wallpapers: (st.wallpapers || []).map((h) => idByHash.get(h)).filter(Boolean),
+    added: st.added || now,
+    w: r.w, h: r.h, ratio: ratioLabel(r.w, r.h), size: r.size, color: r.color, pal: r.palette, lqip: r.lqip,
+    t: r.tBase, p: r.preview, og: r.og, o: r.orig, file: path.basename(r.orig), hash: r.hash,
+  };
+})).filter(Boolean).sort((a, b) => b.added - a.added);
+if (setupList.length) log(`community: ${setups.length} setup${setups.length === 1 ? '' : 's'}`);
+
+const manifest = { name: SITE_NAME, generated: now, pipeline: PIPELINE, widths: THUMB_WIDTHS, categories, colors, items, setups };
 const manifestJson = JSON.stringify(manifest);
 const mHash = hashOf(manifestJson);
 await writeFile(path.join(OUT, `a/manifest.${mHash}.json`), manifestJson);
 await writeFile(path.join(OUT, 'manifest.json'), manifestJson); // unhashed copy for the admin page
 
 // Static assets, content-hashed for immutable caching.
-for (const [key, file] of [['css', 'styles.css'], ['js', 'app.js']]) {
+for (const [key, file] of [['css', 'styles.css'], ['js', 'app.js'], ['submit', 'submit.js']]) {
   let src = await readFile(path.join(SRC, file), 'utf8');
   if (key === 'js') src = src.replace('__MANIFEST__', `a/manifest.${mHash}.json`);
   const name = `a/${file.replace(/\.(\w+)$/, `.${hashOf(src)}.$1`)}`;
@@ -384,6 +414,13 @@ await writeFile(path.join(OUT, 'index.html'), renderPage(tpl, {
   image: items[0] ? SITE_URL + items[0].og : '', color: '#0a0a0b',
 }));
 
+await mkdir(path.join(OUT, 'community'), { recursive: true });
+await writeFile(path.join(OUT, 'community', 'index.html'), renderPage(tpl, {
+  root: '../', page: 'community', title: `community — ${SITE_NAME}`,
+  description: setups.length ? `${setups.length} desk setup${setups.length === 1 ? '' : 's'} using wallpapers from ${SITE_NAME}. Share yours.` : `Share your setup with a wallpaper from ${SITE_NAME}.`,
+  url: `${SITE_URL}community/`, image: (setups[0] || items[0]) ? SITE_URL + (setups[0] || items[0]).og : '', color: '#0a0a0b',
+}));
+
 const mb = (b) => (b / 1048576).toFixed(1) + ' MB';
 for (const it of items) {
   const dir = path.join(OUT, 'w', it.id);
@@ -402,6 +439,7 @@ const day = (ms) => new Date(ms).toISOString().slice(0, 10);
 await writeFile(path.join(OUT, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>${SITE_URL}</loc><lastmod>${day(now)}</lastmod></url>
+  <url><loc>${SITE_URL}community/</loc><lastmod>${day(now)}</lastmod></url>
 ${items.map((it) => `  <url><loc>${SITE_URL}w/${it.id}/</loc><lastmod>${day(it.added)}</lastmod></url>`).join('\n')}
 </urlset>
 `);

@@ -39,6 +39,15 @@
 
   <div class="banner" id="banner" hidden></div>
 
+  <section class="panel" id="inboxPanel">
+    <div class="lib-head">
+      <h2>Inbox <span class="badge mono" id="inboxCount" hidden></span></h2>
+      <button class="btn ghost small" id="inboxRefresh" type="button">refresh</button>
+    </div>
+    <p class="mono dim hint top" id="inboxNote"></p>
+    <ul class="inbox" id="inbox"></ul>
+  </section>
+
   <section class="panel">
     <h2>Add wallpapers</h2>
     <label class="drop" id="drop">
@@ -68,6 +77,28 @@
     <p class="mono dim hint">Tap wallpapers to select them, then rename, move or delete.</p>
   </section>
 
+  <section class="panel">
+    <div class="lib-head">
+      <h2>Community <span class="mono dim" id="setupCount"></span></h2>
+    </div>
+    <details class="own">
+      <summary class="btn ghost small">post a setup yourself</summary>
+      <form class="own-form" id="ownForm">
+        <input type="file" id="ownFiles" accept="image/jpeg,image/png,image/webp,image/avif" multiple required>
+        <input type="text" id="ownCaption" maxlength="200" placeholder="caption (optional)">
+        <div class="own-row">
+          <input type="text" id="ownName" maxlength="60" placeholder="credit name" value="egor">
+          <input type="text" id="ownLink" maxlength="300" placeholder="credit link (optional)">
+        </div>
+        <label class="mono dim">wallpapers in it (optional, ctrl/cmd-click for several)</label>
+        <select id="ownWalls" multiple size="6"></select>
+        <button class="btn solid" type="submit">publish setup</button>
+      </form>
+    </details>
+    <ul class="lib" id="setups"></ul>
+    <p class="mono dim hint">Tap a setup to remove it from the site.</p>
+  </section>
+
   <!-- sticky action bars -->
   <div class="dock" id="upDock" hidden>
     <span class="mono" id="upSummary"></span>
@@ -77,6 +108,7 @@
   <div class="dock" id="selDock" hidden>
     <span class="mono" id="selSummary"></span>
     <button class="btn ghost" id="rename" type="button" hidden>rename</button>
+    <button class="btn ghost" id="credit" type="button" hidden>credit</button>
     <select id="moveTo" aria-label="Move to category"></select>
     <button class="btn danger" id="delete" type="button">delete</button>
     <button class="btn ghost" id="clearSel" type="button" aria-label="Clear selection">✕</button>
