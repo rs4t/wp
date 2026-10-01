@@ -7,6 +7,10 @@
   const ROOT = new URL(body.dataset.root || './', location.href);
   const url = (p) => new URL(p, ROOT).href;
   const pageUrl = (id) => url(id ? `w/${encodeURIComponent(id)}/` : '');
+  // The community page shows setups with the same grid + viewer; its entries live at community/#id.
+  const COMMUNITY = body.dataset.page === 'community';
+  const shareUrl = (id) => (COMMUNITY ? url('community/') + '#' + encodeURIComponent(id) : pageUrl(id));
+  const routeUrl = (id) => (COMMUNITY ? url('community/') + location.search + (id ? '#' + encodeURIComponent(id) : '') : pageUrl(id) + location.search);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
@@ -19,6 +23,7 @@
   const SORTS = ['random', 'newest', 'oldest', 'popular'];
   let cat = null, sort = 'random', color = null, favOnly = false;
   let counts = null;      // downloads per wallpaper hash, once /api/stats answers
+  let wFilter = null;     // community: only setups using this wallpaper id
   let shuffled = [];      // random order, fixed until the visitor picks random again
   let tiles = new Map();  // id -> { el, card, img, col, x, y, w, h }
   let cols = 0, colW = 0;
@@ -55,16 +60,23 @@
 
   function init(m) {
     data = m;
-    items = m.items;
+    window.WP = { data: m, url };
+    items = COMMUNITY
+      ? (m.setups || []).map((st) => ({ ...st, title: st.caption || `${st.name}'s setup`, cat: null, colors: [], uses: st.wallpapers }))
+      : m.items;
     items.forEach((it, i) => { it.i = i; byId.set(it.id, it); });
 
     const q = new URLSearchParams(location.search);
+    if (COMMUNITY) {
+      sort = 'newest';
+      if (m.items.some((it) => it.id === q.get('w'))) wFilter = q.get('w');
+    }
     if (q.get('c') && m.categories.some((c) => c.id === q.get('c'))) cat = q.get('c');
     if (SORTS.includes(q.get('sort'))) sort = q.get('sort');
     if (q.get('color') && m.colors?.some((c) => c.id === q.get('color'))) color = q.get('color');
     for (const h of [...favs]) if (!items.some((it) => it.hash === h)) favs.delete(h);
     reshuffle();
-    loadStats();
+    if (!COMMUNITY) loadStats();
 
     buildChips();
     buildSwatches();
@@ -73,7 +85,8 @@
     buildFooter();
     applyView(false);
 
-    $('#empty').hidden = items.length > 0;
+    $('#empty').hidden = items.length > 0 || COMMUNITY;
+    $('#cempty').hidden = !COMMUNITY || items.length > 0;
     $('#shuffle').addEventListener('click', shuffle);
     $('#favs').addEventListener('click', () => { favOnly = !favOnly; toGridTop(); applyView(true); });
     $('#clearFilters').addEventListener('click', () => { cat = null; color = null; favOnly = false; applyView(true); syncQuery(); });
@@ -90,11 +103,11 @@
     addEventListener('keydown', onKey);
     onScroll();
 
-    const initial = body.dataset.initial;
+    const initial = COMMUNITY ? decodeURIComponent(location.hash.slice(1)) : body.dataset.initial;
     if (initial && byId.has(initial)) {
       revealAll(true);
       openLightbox(byId.get(initial), { fromTile: false, push: false });
-    } else if (!reduced && items.length && !store.get('intro')) {
+    } else if (!COMMUNITY && !reduced && items.length && !store.get('intro')) {
       store.set('intro', '1');
       intro();
     } else {
@@ -162,6 +175,15 @@
     b.setAttribute('aria-label', favs.has(it.hash) ? 'Remove from favorites (F)' : 'Add to favorites (F)');
   }
 
+  function renderWFilter() {
+    const el = $('#wfilter');
+    const w = wFilter && data.items.find((it) => it.id === wFilter);
+    el.hidden = !w;
+    if (!w) return;
+    el.innerHTML = `setups with <a href="${pageUrl(w.id)}">${escapeHtml(w.title)}</a> · <button class="linkish" type="button">show all</button>`;
+    el.querySelector('button').onclick = () => { wFilter = null; history.replaceState(history.state, '', url('community/')); applyView(true); };
+  }
+
   function reshuffle() {
     shuffled = items.slice();
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -209,7 +231,10 @@
   function buildFooter() {
     const d = new Date(data.generated);
     const fmt = d.toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' });
-    $('#foot').innerHTML = `<span>${pad(items.length)} wallpapers · updated ${fmt}</span><span>free to download · <a href="https://egorz.com">egorz.com</a></span>`;
+    const n = data.items.length;
+    $('#foot').innerHTML = `<span>${pad(n)} wallpapers · updated ${fmt}</span>` +
+      `<button class="linkish" type="button" data-submit>share your setup or send a wallpaper →</button>` +
+      `<span>free to download · <a href="https://egorz.com">egorz.com</a></span>`;
   }
 
   // ---------- tiles ----------
@@ -218,7 +243,7 @@
     for (const it of items) {
       const a = document.createElement('a');
       a.className = 'tile';
-      a.href = pageUrl(it.id);
+      a.href = shareUrl(it.id);
       a.dataset.id = it.id;
       a.setAttribute('aria-label', `${it.title}, ${it.w} by ${it.h}`);
       a.innerHTML =
@@ -226,7 +251,9 @@
         `<div class="lq" style="background-image:url(${it.lqip});background-color:${it.color}"></div>` +
         `<picture><source type="image/avif" srcset="${srcset(it, 'avif')}"><img alt="" loading="lazy" decoding="async" width="${it.w}" height="${it.h}" srcset="${srcset(it, 'webp')}"></picture>` +
         `<div class="lit"></div>` +
-        `<div class="meta"><b>${escapeHtml(it.title)}</b><span class="mono">${it.w}×${it.h}</span></div>` +
+        (COMMUNITY
+          ? `<div class="meta"><b>${escapeHtml(it.name)}</b>${it.caption ? `<span class="mono">${escapeHtml(it.caption)}</span>` : ''}</div>`
+          : `<div class="meta"><b>${escapeHtml(it.title)}</b><span class="mono">${it.w}×${it.h}</span></div>`) +
         (it.new ? `<span class="new">new</span>` : '') +
         `<span class="heart" role="button" aria-label="Favorite">${HEART}</span>` +
         `</div></div></div>`;
@@ -272,7 +299,8 @@
 
   // ---------- view: filter + sort + masonry ----------
   function applyView(animate) {
-    view = items.filter((it) => (!cat || it.cat === cat) && (!color || it.colors?.includes(color)) && (!favOnly || favs.has(it.hash)));
+    view = items.filter((it) => (!cat || it.cat === cat) && (!color || it.colors?.includes(color)) && (!favOnly || favs.has(it.hash)) && (!wFilter || it.uses?.includes(wFilter)));
+    if (COMMUNITY) renderWFilter();
     const rank = new Map(shuffled.map((it, i) => [it, i]));
     if (sort === 'oldest') view.reverse();
     else if (sort === 'random') view.sort((a, b) => rank.get(a) - rank.get(b));
@@ -283,7 +311,7 @@
     $('#sort').textContent = sort;
     $('#sort').dataset.mode = sort;
     $('#sort').setAttribute('aria-label', `Sort: ${sort}. Change sort order`);
-    $('#count').textContent = `${pad(view.length)} ${view.length === 1 ? 'wallpaper' : 'wallpapers'}`;
+    $('#count').textContent = `${pad(view.length)} ${COMMUNITY ? (view.length === 1 ? 'setup' : 'setups') : view.length === 1 ? 'wallpaper' : 'wallpapers'}`;
     $('#swatches').querySelectorAll('.swatch').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.color === color)));
     $('#swatches').classList.toggle('picking', !!color);
     updateFavButton();
@@ -497,10 +525,32 @@
     ambIdx ^= 1;
   }
 
+  const creditHtml = (c) => (c.link
+    ? `by <a href="${escapeHtml(c.link)}" target="_blank" rel="noopener nofollow ugc">${escapeHtml(c.name)}</a>`
+    : `by ${escapeHtml(c.name)}`);
+
   function setInfo(it, animate) {
     const idx = view.indexOf(it);
     const n = view.length;
     lbIdx.textContent = idx >= 0 ? `${pad(idx + 1)} / ${pad(n)}` : '';
+    const credit = $('#lbCredit'), uses = $('#lbUses'), seen = $('#lbSeen');
+    if (COMMUNITY) {
+      lbTitle.textContent = it.title;
+      lbSpec.textContent = new Date(it.added).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' });
+      credit.innerHTML = creditHtml(it); credit.hidden = false;
+      const used = (it.uses || []).map((id) => data.items.find((x) => x.id === id)).filter(Boolean);
+      uses.innerHTML = used.map((w) => `<a class="use" href="${pageUrl(w.id)}"><img src="${url(`${w.t}-480.webp`)}" alt=""><span>${escapeHtml(w.title)}</span></a>`).join('');
+      uses.hidden = !used.length;
+      document.title = `${it.title} — community — egor's wallpapers`;
+      $('#copy span').textContent = 'copy link';
+      return;
+    }
+    credit.hidden = !it.credit;
+    if (it.credit) credit.innerHTML = creditHtml(it.credit);
+    uses.hidden = true;
+    const inSetups = (data.setups || []).filter((st) => st.wallpapers.includes(it.id)).length;
+    seen.hidden = !inSetups;
+    if (inSetups) { seen.href = url(`community/?w=${encodeURIComponent(it.id)}`); seen.textContent = `seen in ${inSetups} setup${inSetups === 1 ? '' : 's'} →`; }
     lbTitle.innerHTML = it.cat ? `<span class="lb-cat">${escapeHtml(it.cat)}/</span>${escapeHtml(it.name)}` : escapeHtml(it.title);
     const dls = countLabel(it);
     lbSpec.innerHTML = `${it.w} × ${it.h}<i>/</i>${it.ratio}<i>/</i>${mb(it.size)}<i>/</i>${it.file.split('.').pop().toUpperCase()}${dls ? `<i>/</i>${dls}` : ''}`;
@@ -530,7 +580,7 @@
     if (busy) return;
     busy = true;
     cur = it;
-    if (push) history.pushState({ id: it.id }, '', pageUrl(it.id) + location.search);
+    if (push) history.pushState({ id: it.id }, '', routeUrl(it.id));
     const sbw = innerWidth - document.documentElement.clientWidth;
     document.documentElement.classList.add('locked');
     body.style.paddingRight = sbw ? sbw + 'px' : '';
@@ -572,8 +622,8 @@
     busy = true;
     const it = cur;
     resetZoom(false);
-    if (push) history.pushState({}, '', pageUrl('') + location.search);
-    document.title = "egor's wallpapers";
+    if (push) history.pushState({}, '', routeUrl(''));
+    document.title = COMMUNITY ? "community — egor's wallpapers" : "egor's wallpapers";
     lb.classList.add('leaving');
     lb.classList.remove('ready');
 
@@ -618,7 +668,7 @@
     resetZoom(false);
     const old = fig, prev = cur;
     cur = next;
-    history.replaceState({ id: next.id }, '', pageUrl(next.id) + location.search);
+    history.replaceState({ id: next.id }, '', routeUrl(next.id));
     holdTile(prev, false);
     holdTile(next, true);
     setInfo(next, true);
@@ -665,7 +715,7 @@
   $('#next').addEventListener('click', () => go(1));
   stage.addEventListener('click', (e) => { if (e.target === stage) closeLightbox(); });
   $('#copy').addEventListener('click', async () => {
-    const link = pageUrl(cur.id);
+    const link = shareUrl(cur.id);
     try { await navigator.clipboard.writeText(link); }
     catch {
       const ta = document.createElement('textarea'); ta.value = link; body.append(ta); ta.select();
@@ -832,10 +882,10 @@
   addEventListener('pointercancel', endPointer);
 
   function onKey(e) {
-    if (e.metaKey || e.ctrlKey || e.altKey || $('.intro')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || $('.intro') || $('.sub-modal.open')) return;
     if (!lb.hidden) {
       if (e.key === 'Escape') { e.preventDefault(); z.s > 1 ? resetZoom() : closeLightbox(); }
-      else if (e.key === 'f' || e.key === 'F') toggleFav(cur);
+      else if ((e.key === 'f' || e.key === 'F') && !COMMUNITY) toggleFav(cur);
       else if (e.key === 'z' || e.key === 'Z') { if (z.s > 1) resetZoom(); else if (fig) { zoomAt(maxZoom(), innerWidth / 2, innerHeight / 2); applyZoom(); } }
       else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
@@ -855,8 +905,8 @@
 
   function onRoute() {
     if (busy) { clearTimeout(onRoute.t); onRoute.t = setTimeout(onRoute, 120); return; }
-    const m = location.href.startsWith(ROOT.href) && location.href.slice(ROOT.href.length).match(/^w\/([^/?#]+)\/?/);
-    const id = m ? decodeURIComponent(m[1]) : null;
+    const m = !COMMUNITY && location.href.startsWith(ROOT.href) && location.href.slice(ROOT.href.length).match(/^w\/([^/?#]+)\/?/);
+    const id = COMMUNITY ? decodeURIComponent(location.hash.slice(1)) || null : m ? decodeURIComponent(m[1]) : null;
     if (id && byId.has(id)) {
       if (!cur) openLightbox(byId.get(id), { fromTile: true, push: false });
       else if (cur.id !== id) go(1, byId.get(id));

@@ -16,6 +16,7 @@ A quiet, dark gallery for my wallpaper collection. Browse, preview, and download
 - Masonry gallery with categories, a color filter and random / newest / oldest / popular sorting
 - Viewer with zoom down to the original pixels, swipe and keyboard navigation
 - Favorites saved in your browser, one-click original downloads, a share link for every wallpaper
+- [Community](https://wp.egorz.com/community/): setups from people using these wallpapers, and a form to share yours or send in a wallpaper (reviewed before it goes live)
 
 ## How it works
 

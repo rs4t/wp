@@ -27,24 +27,32 @@
 <link rel="stylesheet" href="{{root}}{{css}}">
 <script>document.documentElement.classList.add('js')</script>
 </head>
-<body data-root="{{root}}" data-initial="{{initial}}">
+<body data-root="{{root}}" data-initial="{{initial}}" data-page="{{page}}">
 
 <header class="bar" id="bar">
   <div class="bar-row">
     <a class="mark" href="{{root}}" aria-label="egor's wallpapers — home"><span>egor's</span> <em>wallpapers</em></a>
+    <span class="tag mono" data-only="community">community</span>
     <span class="count mono" id="count" aria-live="polite"></span>
     <div class="actions">
-      <button class="btn ghost fav-toggle" id="favs" type="button" aria-pressed="false" title="Show favorites" hidden>
+      <a class="btn ghost" href="{{root}}community/" data-only="gallery" title="Setups from people using these wallpapers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h15A1.5 1.5 0 0 1 21 6.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 15.5zM9 20h6M12 17v3"/></svg><span>community</span></a>
+      <a class="btn ghost" href="{{root}}" data-only="community"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span>wallpapers</span></a>
+      <button class="btn solid" type="button" data-submit="setup" data-only="community"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>share yours</span></button>
+      <button class="btn ghost fav-toggle" data-only="gallery" id="favs" type="button" aria-pressed="false" title="Show favorites" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
         <span>0</span>
       </button>
-      <button class="btn ghost" id="shuffle" type="button" title="Random wallpaper (R)">
+      <button class="btn ghost" data-only="gallery" id="shuffle" type="button" title="Random wallpaper (R)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
         <span>shuffle</span>
       </button>
     </div>
   </div>
-  <div class="bar-row sub">
+  <div class="bar-row sub community-sub" data-only="community">
+    <p class="mono dim c-intro">desks, screens and phones wearing wallpapers from this site</p>
+    <p class="wfilter mono" id="wfilter" hidden></p>
+  </div>
+  <div class="bar-row sub" data-only="gallery">
     <nav class="chips" id="chips" aria-label="Categories"><span class="chip-pill" id="pill" aria-hidden="true"></span></nav>
     <div class="swatches" id="swatches" role="group" aria-label="Filter by color"></div>
     <button class="sort mono" id="sort" type="button" aria-label="Change sort order">random</button>
@@ -56,6 +64,11 @@
   <div class="empty" id="none" hidden>
     <em>Nothing matches.</em>
     <button class="btn ghost" id="clearFilters" type="button">clear filters</button>
+  </div>
+  <div class="empty" id="cempty" hidden>
+    <em>No setups yet.</em>
+    <span class="mono">be the first to show yours</span>
+    <button class="btn solid" type="button" data-submit="setup">share your setup</button>
   </div>
   <div class="empty" id="empty" hidden>
     <em>Nothing here yet.</em>
@@ -76,8 +89,11 @@
       <span class="lb-idx mono" id="lbIdx"></span>
       <h2 class="lb-title" id="lbTitle"></h2>
       <p class="lb-spec mono" id="lbSpec"></p>
+      <p class="lb-credit" id="lbCredit" hidden></p>
+      <div class="lb-uses" id="lbUses" hidden></div>
     </div>
     <div class="lb-actions">
+      <a class="btn ghost lb-seen" id="lbSeen" hidden></a>
       <button class="btn ghost icon fav-btn" id="fav" type="button" aria-pressed="false" aria-label="Add to favorites (F)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></button>
       <button class="btn ghost" id="copy" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span>copy link</span></button>
       <a class="btn solid" id="dl" href="#" download><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>download</span><span class="mono dim" id="dlSize"></span></a>
@@ -88,5 +104,6 @@
 <div class="grain" aria-hidden="true"></div>
 <noscript><p class="noscript">This gallery needs JavaScript to browse. Sorry!</p></noscript>
 <script src="{{root}}{{js}}" defer></script>
+<script src="{{root}}{{submit}}" defer></script>
 </body>
 </html>

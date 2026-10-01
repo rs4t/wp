@@ -97,8 +97,9 @@
       ]);
       state.files = list.files;
       state.thumbs = new Map(manifest.items.filter((i) => i.src).map((i) => [i.src, SITE + i.t + '-480.webp']));
+      state.manifest = manifest;
       for (const p of [...state.sel]) if (!state.files.some((f) => f.path === p)) state.sel.delete(p);
-      renderCats(); renderLib(); renderSel(); renderStatus();
+      renderCats(); renderLib(); renderSel(); renderStatus(); renderSetups(); loadInbox();
     } catch (err) {
       if (err.message !== 'Logged out') $('#lib').innerHTML = `<li class="empty mono">${esc(err.message)}</li>`;
     }
@@ -181,6 +182,7 @@
     $('#selDock').hidden = n === 0 || state.queue.length > 0;
     $('#selSummary').textContent = `${n} selected`;
     $('#rename').hidden = n !== 1;
+    $('#credit').hidden = n !== 1;
   }
   $('#rename').addEventListener('click', async () => {
     const [path] = state.sel;
@@ -367,6 +369,181 @@
   });
 
   addEventListener('beforeunload', (e) => { if (state.busy) { e.preventDefault(); e.returnValue = ''; } });
+
+  // ---------- credits ----------
+  $('#credit').addEventListener('click', async () => {
+    const [path] = state.sel;
+    const cur = state.manifest?.items.find((i) => i.src === path)?.credit || {};
+    const name = prompt('Credit name (leave empty to remove the credit):', cur.name || '');
+    if (name === null) return;
+    const link = name.trim() ? prompt('Credit link (optional):', cur.link || '') : '';
+    if (link === null) return;
+    await save({ credit: [{ path, name: name.trim(), link: (link || '').trim() }] }, name.trim() ? `Credited ${name.trim()}` : 'Removed credit');
+  });
+
+  // ---------- uploads from a Blob (inbox approvals, own setups) ----------
+  async function blobSha(blob) {
+    const b64 = await toBase64(blob);
+    const res = await fetch(API + 'blob', { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Admin': '1', 'Content-Type': 'text/plain' }, body: b64 });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.sha) throw new Error(data.error || `Upload failed (${res.status})`);
+    return data.sha;
+  }
+  // Setup photos don't need full resolution: 2560px JPEG is plenty and keeps the repo small.
+  async function shrinkForSetup(blob) {
+    const bmp = await createImageBitmap(blob);
+    const k = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close?.();
+    return new Promise((r, j) => c.toBlob((b) => (b ? r(b) : j(new Error('Could not convert image'))), 'image/jpeg', 0.88));
+  }
+
+  // ---------- inbox ----------
+  const byHash = (h) => state.manifest?.items.find((i) => i.hash === h);
+  const fileUrl = (key) => API + 'inbox/file?key=' + encodeURIComponent(key);
+  async function loadInbox() {
+    let data;
+    try { data = await api('inbox'); } catch (err) { $('#inboxNote').textContent = err.message; return; }
+    state.inbox = data.items || [];
+    const n = state.inbox.length;
+    $('#inboxCount').hidden = !n;
+    $('#inboxCount').textContent = `${n} new`;
+    $('#inboxNote').textContent = !data.enabled
+      ? 'Submissions are off until the R2 bucket and the Turnstile secrets are set up.'
+      : n ? '' : 'No new submissions.';
+    renderInbox();
+  }
+  $('#inboxRefresh').addEventListener('click', loadInbox);
+
+  function renderInbox() {
+    const cats = categories();
+    $('#inbox').innerHTML = (state.inbox || []).map((s) => {
+      const d = s.data, setup = s.type === 'setup';
+      const walls = (d.wallpapers || []).map(byHash).filter(Boolean).map((w) => esc(w.title)).join(', ');
+      const catOpts = (sel) => `<option value="">no category</option>` +
+        [...new Set([...cats, sel].filter(Boolean))].map((c) => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('') +
+        `<option value="__new__">new category…</option>`;
+      return `<li class="sub" data-id="${s.id}">
+        <div class="sub-head">
+          <span class="kind ${s.type}">${setup ? 'setup' : 'wallpaper'}</span>
+          <span class="mono dim">${new Date(s.created).toLocaleString()}</span>
+        </div>
+        <div class="sub-meta">
+          <label>credit <input class="c-name" value="${esc(d.name)}" maxlength="60"></label>
+          <label>link <input class="c-link" value="${esc(d.link || '')}" maxlength="300"></label>
+          ${setup ? `<label class="wide">caption <input class="c-caption" value="${esc(d.caption || '')}" maxlength="200"></label>` : ''}
+          ${setup && walls ? `<p class="wide mono">wallpapers: ${walls}</p>` : ''}
+          ${!setup && d.category ? `<p class="wide mono">suggested category: ${esc(d.category)}</p>` : ''}
+          ${d.message ? `<p class="wide msg">${esc(d.message)}</p>` : ''}
+        </div>
+        <ul class="sub-imgs">${s.files.map((f, n) => `
+          <li data-n="${n}">
+            <a href="${fileUrl(f.key)}" target="_blank" rel="noopener"><img src="${fileUrl(f.key)}" alt="" loading="lazy"></a>
+            <label class="keep"><input type="checkbox" class="f-keep" checked> keep</label>
+            ${setup ? '' : `<input class="f-name" value="${esc(f.name.replace(/\.[^.]+$/, ''))}" maxlength="100" placeholder="name">
+              <select class="f-cat">${catOpts(cats.includes(d.category) ? d.category : '')}</select>`}
+            <span class="mono dim">${mb(f.size)}</span>
+          </li>`).join('')}</ul>
+        <div class="sub-actions">
+          ${d.email ? `<a class="btn ghost" href="mailto:${esc(d.email)}?subject=${encodeURIComponent("Your submission to egor's wallpapers")}">reply</a>` : ''}
+          <button class="btn danger" type="button" data-act="reject">reject</button>
+          <button class="btn solid" type="button" data-act="approve">approve</button>
+        </div>
+      </li>`;
+    }).join('');
+  }
+
+  $('#inbox').addEventListener('change', (e) => {
+    if (e.target.classList.contains('f-cat') && e.target.value === '__new__') {
+      const c = prompt('New category name:')?.trim().toLowerCase();
+      if (!c) { e.target.selectedIndex = 0; return; }
+      const o = new Option(c, c, true, true);
+      e.target.add(o, e.target.options.length - 1);
+    }
+  });
+
+  $('#inbox').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn || state.busy) return;
+    const li = btn.closest('.sub');
+    const s = state.inbox.find((x) => x.id === li.dataset.id);
+    if (btn.dataset.act === 'reject') {
+      if (!confirm('Reject and delete this submission?')) return;
+      try { await api('inbox/resolve', { method: 'POST', body: JSON.stringify({ id: s.id }) }); toast('Rejected'); loadInbox(); }
+      catch (err) { banner(`Couldn't reject: ${esc(err.message)}`, true); }
+      return;
+    }
+    const keep = [...li.querySelectorAll('.sub-imgs > li')].filter((x) => x.querySelector('.f-keep').checked);
+    if (!keep.length) return toast('Keep at least one image, or reject');
+    const credit = { name: li.querySelector('.c-name').value.trim(), link: li.querySelector('.c-link').value.trim() };
+    state.busy = true;
+    li.classList.add('working');
+    btn.textContent = 'publishing…';
+    try {
+      const body = { add: [], setups: [] };
+      for (const x of keep) {
+        const f = s.files[+x.dataset.n];
+        const res = await fetch(fileUrl(f.key), { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(`Could not load ${f.name}`);
+        let blob = await res.blob();
+        if (s.type === 'setup') {
+          blob = await shrinkForSetup(blob);
+          body.setups.push({ sha: await blobSha(blob), ...credit, caption: li.querySelector('.c-caption')?.value.trim() || '', wallpapers: s.data.wallpapers || [] });
+        } else {
+          body.add.push({ sha: await blobSha(blob), name: x.querySelector('.f-name').value.trim(), ext: extOf(f.key), category: x.querySelector('.f-cat').value, credit });
+        }
+      }
+      await api('commit', { method: 'POST', body: JSON.stringify(body) });
+      await api('inbox/resolve', { method: 'POST', body: JSON.stringify({ id: s.id }) });
+      liveBanner(s.type === 'setup' ? `Published ${keep.length} setup photo${keep.length === 1 ? '' : 's'}` : `Added ${keep.length} wallpaper${keep.length === 1 ? '' : 's'} by ${credit.name}`);
+      state.busy = false;
+      await load();
+    } catch (err) {
+      if (err.message !== 'Logged out') banner(`Couldn't approve: ${esc(err.message)}`, true);
+      li.classList.remove('working');
+      btn.textContent = 'approve';
+    } finally { state.busy = false; }
+  });
+
+  // ---------- community: published setups ----------
+  function renderSetups() {
+    const list = state.manifest?.setups || [];
+    $('#setupCount').textContent = String(list.length);
+    $('#setups').innerHTML = list.length ? list.map((st) => `
+      <li class="l setup" data-setup="${esc(st.id)}" tabindex="0">
+        <div class="l-img" style="background-image:url('${esc(SITE + st.t + '-480.webp')}')"></div>
+        <div class="l-cap"><b>${esc(st.caption || st.name)}</b><span class="mono dim">${esc(st.name)}</span></div>
+      </li>`).join('') : '<li class="empty mono">no setups published yet</li>';
+    const sel = $('#ownWalls');
+    if (sel && !sel.options.length) sel.innerHTML = (state.manifest?.items || []).map((i) => `<option value="${i.hash}">${esc(i.title)}</option>`).join('');
+  }
+  $('#setups').addEventListener('click', async (e) => {
+    const li = e.target.closest('[data-setup]');
+    if (!li || state.busy) return;
+    if (!confirm('Remove this setup from the community page?')) return;
+    await save({ unsetup: [li.dataset.setup] }, 'Removed setup');
+  });
+  $('#ownForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (state.busy) return;
+    const files = [...$('#ownFiles').files].slice(0, 3);
+    if (!files.length) return;
+    const btn = e.target.querySelector('button');
+    state.busy = true; btn.disabled = true; btn.textContent = 'publishing…';
+    try {
+      const wallpapers = [...$('#ownWalls').selectedOptions].map((o) => o.value).slice(0, 5);
+      const setups = [];
+      for (const f of files) setups.push({ sha: await blobSha(await shrinkForSetup(f)), name: $('#ownName').value.trim() || 'egor', link: $('#ownLink').value.trim(), caption: $('#ownCaption').value.trim(), wallpapers });
+      state.busy = false;
+      await save({ setups }, `Published ${setups.length} setup${setups.length === 1 ? '' : 's'}`);
+      e.target.reset(); $('#ownName').value = 'egor';
+      e.target.closest('details').open = false;
+    } catch (err) {
+      banner(`Couldn't publish: ${esc(err.message)}`, true);
+    } finally { state.busy = false; btn.disabled = false; btn.textContent = 'publish setup'; }
+  });
 
   // ---------- boot ----------
   api('session').then(() => { showApp(); load(); }).catch((err) => {

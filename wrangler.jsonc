@@ -20,8 +20,11 @@
     { "pattern": "egorz.com/wp/*", "zone_name": "egorz.com" }
   ],
   // Download counts for the "popular" sort (SQLite-backed Durable Object, free plan).
-  "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "Stats" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Stats"] }],
+  // Community submissions: details in the Inbox Durable Object, files in a private R2 bucket.
+  // Secrets TURNSTILE_SITEKEY and TURNSTILE_SECRET switch submitting on.
+  "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "Stats" }, { "name": "INBOX", "class_name": "Inbox" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Stats"] }, { "tag": "v2", "new_sqlite_classes": ["Inbox"] }],
+  "r2_buckets": [{ "binding": "SUBMISSIONS", "bucket_name": "wp-submissions" }],
   // Admin uploads commit here. Secrets ADMIN_PASSWORD and GITHUB_TOKEN are set in the dashboard.
   "vars": { "GITHUB_REPO": "rs4t/wp", "GITHUB_BRANCH": "main" },
   "observability": { "enabled": true }
