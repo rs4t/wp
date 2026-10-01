@@ -67,12 +67,8 @@
           <label class="sub-field" data-for="wallpaper"><span class="label mono">category</span>
             <select name="category"></select></label>
 
-          <div class="sub-row">
-            <label class="sub-field"><span class="label mono">name or handle <i>shown as credit</i></span>
-              <input name="name" maxlength="60" required placeholder="@you"></label>
-            <label class="sub-field"><span class="label mono">link <i>optional</i></span>
-              <input name="link" maxlength="300" placeholder="instagram, artstation…"></label>
-          </div>
+          <label class="sub-field"><span class="label mono">name or handle <i>shown as credit</i></span>
+            <input name="name" maxlength="60" required placeholder="@you"></label>
           <label class="sub-field"><span class="label mono">email <i>optional, never shown — only so I can reply</i></span>
             <input name="email" type="email" maxlength="120" placeholder="you@example.com"></label>
           <label class="sub-field"><span class="label mono">message <i>optional</i></span>
@@ -180,11 +176,59 @@
   }
 
   // ---------- wallpaper picker (setups) ----------
+  // Forgiving search: ignores separators and leading zeros ("fractal maze 4" →
+  // fractal-maze/04), splits "maze04", matches word starts and parts, tolerates
+  // a typo per word, and knows color words. Best matches first.
+  const norm = (s) => String(s).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/([a-z])(\d)/g, '$1 $2').replace(/(\d)([a-z])/g, '$1 $2')
+    .split(/[^a-z0-9]+/).filter(Boolean).map((t) => (/^\d+$/.test(t) ? String(+t) : t));
+  function close1(a, b) {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0, j = 0, edits = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++edits > 1) return false;
+      if (a.length === b.length && a[i] === b[j + 1] && a[i + 1] === b[j]) { i += 2; j += 2; continue; } // swapped letters
+      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+    }
+    return edits + (a.length - i) + (b.length - j) <= 1;
+  }
+  function tokenScore(q, hay) {
+    let best = 0;
+    for (const h of hay) {
+      if (h === q) return 4;
+      if (h.startsWith(q)) best = Math.max(best, 3);
+      else if (q.length >= 3 && h.includes(q)) best = Math.max(best, 2);
+      else if (q.length >= 4 && (close1(q, h) || close1(q, h.slice(0, q.length)))) best = Math.max(best, 1);
+    }
+    return best;
+  }
+  const hayCache = new Map();
+  function searchScore(it, qTokens, qJoined) {
+    let hay = hayCache.get(it);
+    if (!hay) {
+      const tokens = [...norm(it.title), ...norm(it.cat || ''), ...(it.colors || [])];
+      hay = { tokens, joined: tokens.join('') };
+      hayCache.set(it, hay);
+    }
+    let total = 0;
+    for (const q of qTokens) {
+      const sc = tokenScore(q, hay.tokens);
+      if (!sc) return hay.joined.includes(qJoined) && qJoined.length >= 3 ? 1 : 0;
+      total += sc;
+    }
+    return total + (hay.joined.startsWith(qJoined) ? 2 : 0);
+  }
+
   function renderResults() {
     if (!modal || st.type !== 'setup') return;
-    const q = modal.querySelector('.sub-search').value.trim().toLowerCase();
+    const qTokens = norm(modal.querySelector('.sub-search').value);
+    const qJoined = qTokens.join('');
     const all = window.WP?.data.items || [];
-    const hits = (q ? all.filter((it) => it.title.toLowerCase().includes(q)) : all).slice(0, 24);
+    const hits = (qTokens.length
+      ? all.map((it) => [it, searchScore(it, qTokens, qJoined)]).filter(([, sc]) => sc > 0)
+        .sort((a, b) => b[1] - a[1] || a[0].title.localeCompare(b[0].title, 'en', { numeric: true })).map(([it]) => it)
+      : all).slice(0, 36);
     modal.querySelector('.sub-results').innerHTML = hits.map((it) =>
       `<button type="button" data-pick="${it.hash}" class="${st.picks.includes(it.hash) ? 'on' : ''}" title="${esc(it.title)}">
         <img src="${new URL(`${it.t}-480.webp`, ROOT).href}" alt="" loading="lazy"><span>${esc(it.title)}</span></button>`).join('') ||
@@ -244,7 +288,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: st.type, token, consent: true,
-          name: v('name'), link: v('link'), email: v('email'), message: v('message'),
+          name: v('name'), email: v('email'), message: v('message'),
           caption: st.type === 'setup' ? v('caption') : '', category: st.type === 'wallpaper' ? v('category') : '',
           wallpapers: st.type === 'setup' ? st.picks : [],
           files: st.files.map((f) => ({ name: f.file.name, size: f.file.size, type: f.file.type })),
