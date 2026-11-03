@@ -1,4 +1,4 @@
-import { applyChanges } from './changes.js';
+import { applyChanges, parseRepoJson } from './changes.js';
 
 // Admin API: password login, list wallpapers, stream uploads to R2, and
 // commit edits to wallpapers.json + collections.json as one commit (one commit = one rebuild).
@@ -116,9 +116,7 @@ const COLLECTIONS = 'collections.json';
 async function readJsonFile(env, tree, path, fallback) {
   const entry = tree.find((e) => e.path === path && e.type === 'blob');
   if (!entry) return fallback;
-  const blob = await ghJson(env, `/git/blobs/${entry.sha}`);
-  try { return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(blob.content.replace(/\s/g, '')), (c) => c.charCodeAt(0)))); }
-  catch { return fallback; }
+  return parseRepoJson((await ghJson(env, `/git/blobs/${entry.sha}`)).content, path);
 }
 
 async function jsonBlob(env, data) {

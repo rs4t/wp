@@ -1,7 +1,18 @@
 // Admin edits to wallpapers.json / collections.json, as applied by the Worker.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyChanges } from '../worker/changes.js';
+import { applyChanges, parseRepoJson } from '../worker/changes.js';
+
+const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
+
+test('parseRepoJson reads GitHub blob content (base64, with newlines)', () => {
+  const content = b64('[{"name":"Café"}]').replace(/(.{8})/g, '$1\n');
+  assert.deepEqual(parseRepoJson(content, 'wallpapers.json'), [{ name: 'Café' }]);
+});
+
+test('parseRepoJson refuses a broken file instead of treating it as empty', () => {
+  assert.throws(() => parseRepoJson(b64('[{"hash": '), 'wallpapers.json'), /wallpapers\.json is not valid JSON/);
+});
 
 const walls = [
   { hash: 'aaaaaaaaaa', ext: 'jpg', name: 'Everest', collection: 'mountains', size: 10, added: 1 },

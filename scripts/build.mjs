@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import sharp from 'sharp';
-import { assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry } from './site.mjs';
+import { assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry, loadJson, fetchPrevious } from './site.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
@@ -153,18 +153,9 @@ async function fetchTo(url, dest) {
   await writeFile(dest, Buffer.from(await res.arrayBuffer()));
 }
 
-// The previous deploy's manifest: its images are reused and its slugs become redirects.
-async function loadPrevious() {
-  if (!CACHE_URL) return null;
-  try {
-    const res = await fetch(CACHE_URL + 'manifest.json', { signal: AbortSignal.timeout(15000), cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    log(`no previous deploy to reuse (${err.message}); processing everything`);
-    return null;
-  }
-}
+// The previous deploy's manifest: its images are reused (unless NO_CACHE) and its
+// slugs always become redirects, so it is loaded even when images are not reused.
+const PREV_URL = (process.env.CACHE_URL || SITE_URL).replace(/\/+$/, '') + '/manifest.json';
 
 async function reuseImage(hash, ext, slug, downloadStem, old) {
   const tBase = `t/${slug}.${hash}`, preview = `p/${slug}.${hash}.webp`, og = `og/${slug}.${hash}.jpg`;
@@ -207,14 +198,16 @@ const assets = {};
 await rm(OUT, { recursive: true, force: true });
 for (const d of ['t', 'p', 'og', 'a', 'w', 'c']) await mkdir(path.join(OUT, d), { recursive: true });
 
-const readJson = async (f, fallback) => readFile(path.join(ROOT, f), 'utf8').then(JSON.parse).catch(() => fallback);
+const readJson = (f, fallback) => loadJson(path.join(ROOT, f), fallback);
 // [{ hash, ext, name, collection?, size, added, credit? }]
-const list = await readJson('wallpapers.json', []);
+const list = await readJson('wallpapers.json');
 // [{ id, name, cover? }] in display order
 const collectionList = await readJson('collections.json', []);
-const prev = await loadPrevious();
+const prev = await fetchPrevious(PREV_URL);
+if (!prev) log('no previous deploy; processing everything');
 const previous = new Map();
-if (prev?.pipeline === PIPELINE) {
+if (prev && !CACHE_URL) log('NO_CACHE: reprocessing every image');
+else if (prev?.pipeline === PIPELINE) {
   for (const i of prev.items) if (i.hash) previous.set(i.hash, i);
   log(`reusing processed images from ${CACHE_URL}`);
 } else if (prev) log(`previous deploy used pipeline ${prev.pipeline ?? 1}, reprocessing everything once`);
@@ -290,7 +283,7 @@ const COLOR_ORDER = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple
 const colors = COLOR_ORDER.filter((c) => colorCounts.has(c)).map((id) => ({ id, count: colorCounts.get(id) }));
 
 // Every slug a wallpaper ever had, so old links redirect forever.
-const aliases = collectAliases({ legacy: await readJson('legacy-ids.json', {}), prevAliases: prev?.aliases, prevItems: prev?.items });
+const aliases = collectAliases({ legacy: await readJson('legacy-ids.json'), prevAliases: prev?.aliases, prevItems: prev?.items });
 const liveSlugs = new Map(items.map((i) => [i.hash, i.id]));
 await writeFile(path.join(OUT, '_redirects'), redirectsFile(redirectsFor(aliases, liveSlugs)));
 

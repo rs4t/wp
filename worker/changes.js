@@ -25,6 +25,14 @@ export function cleanCredit(c) {
   return link ? { name, link } : { name };
 }
 
+// A JSON file from GitHub's blob API (base64). A broken file throws, so a save
+// can never overwrite it with an "empty" list.
+export function parseRepoJson(base64, path) {
+  const text = new TextDecoder().decode(Uint8Array.from(atob(base64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
+  try { return JSON.parse(text); }
+  catch (err) { throw new Error(`${path} is not valid JSON (${err.message}) — fix it on GitHub before saving`); }
+}
+
 // uploads: Map<hash, size> of R2 objects found for the hashes in body.add.
 export function applyChanges({ walls, collections, body, uploads, now }) {
   const list = (k) => (Array.isArray(body?.[k]) ? body[k] : []);

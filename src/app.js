@@ -54,6 +54,10 @@
     .catch((e) => { console.error(e); $('#empty').hidden = false; });
 
   function init(m) {
+    // Old category links (/?c=mountains) open that collection's page.
+    const oldCat = !COLL && new URLSearchParams(location.search).get('c');
+    const oldColl = oldCat === 'firey-vivid' ? 'fiery-vivid' : oldCat;
+    if (oldColl && m.collections.some((c) => c.id === oldColl)) return location.replace(url(`c/${encodeURIComponent(oldColl)}/`));
     data = m;
     window.WP = { data: m, url };
     const collName = new Map(m.collections.map((c) => [c.id, c.name]));

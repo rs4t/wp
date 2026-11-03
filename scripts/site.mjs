@@ -39,6 +39,31 @@ export async function withRetry(fn, tries = 3, delayMs = 2000) {
   }
 }
 
+// A data file. Missing → fallback (or an error when no fallback is given);
+// unreadable JSON always fails, so a bad edit can never build an empty site.
+export async function loadJson(file, fallback) {
+  const { readFile } = await import('node:fs/promises');
+  let text;
+  try { text = await readFile(file, 'utf8'); }
+  catch (err) {
+    if (err.code === 'ENOENT' && fallback !== undefined) return fallback;
+    throw new Error(`${file}: ${err.code === 'ENOENT' ? 'missing' : err.message}`);
+  }
+  try { return JSON.parse(text); }
+  catch (err) { throw new Error(`${file} is not valid JSON (${err.message})`); }
+}
+
+// The live site's manifest (images to reuse, slugs to redirect). 404 = no site
+// yet; anything else that fails stops the build, so old links are never dropped.
+export async function fetchPrevious(url, fetchFn = fetch, delayMs = 2000) {
+  return withRetry(async () => {
+    const res = await fetchFn(url, { signal: AbortSignal.timeout(15000), cache: 'no-store' });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`previous manifest: HTTP ${res.status}`);
+    return res.json();
+  }, 3, delayMs);
+}
+
 // Cloudflare static-assets _redirects file.
 export const redirectsFile = (redirects) =>
   Object.entries(redirects).flatMap(([a, b]) => [`/w/${a} /w/${b}/ 301`, `/w/${a}/ /w/${b}/ 301`])

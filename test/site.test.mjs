@@ -1,7 +1,43 @@
 // Slugs and redirects: every old link keeps working, no live page gets hidden.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slugify, assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry } from '../scripts/site.mjs';
+import { slugify, assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry, loadJson, fetchPrevious } from '../scripts/site.mjs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+const tmp = mkdtempSync(path.join(tmpdir(), 'wp-test-'));
+const file = (name, text) => { const p = path.join(tmp, name); writeFileSync(p, text); return p; };
+
+test('loadJson: a broken file fails instead of becoming empty', async () => {
+  await assert.rejects(loadJson(file('bad.json', '[{"hash": '), []), /bad\.json/);
+});
+
+test('loadJson: a required file that is missing fails', async () => {
+  await assert.rejects(loadJson(path.join(tmp, 'nope.json')), /nope\.json/);
+});
+
+test('loadJson: an optional missing file uses the fallback', async () => {
+  assert.deepEqual(await loadJson(path.join(tmp, 'nope.json'), []), []);
+  assert.deepEqual(await loadJson(file('ok.json', '[1]'), []), [1]);
+});
+
+const res = (status, body) => ({ ok: status < 300, status, json: async () => body });
+
+test('fetchPrevious: no site yet (404) means no previous deploy', async () => {
+  assert.equal(await fetchPrevious('u', async () => res(404), 0), null);
+});
+
+test('fetchPrevious: a site that does not answer fails the build', async () => {
+  let n = 0;
+  await assert.rejects(fetchPrevious('u', async () => { n++; return res(503); }, 0), /503/);
+  assert.equal(n, 3, 'retried');
+  await assert.rejects(fetchPrevious('u', async () => { throw new Error('fetch failed'); }, 0), /fetch failed/);
+});
+
+test('fetchPrevious: returns the manifest', async () => {
+  assert.deepEqual(await fetchPrevious('u', async () => res(200, { items: [] }), 0), { items: [] });
+});
 
 test('withRetry gets through passing failures', async () => {
   let n = 0;
