@@ -1,752 +1,1146 @@
 [
   {
-    "path": "wallpapers/dark-waves/P11.png",
     "hash": "b90f6c53f4",
+    "ext": "png",
+    "name": "Dark Waves 01",
+    "collection": "dark-waves",
     "size": 12212937,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P12.png",
     "hash": "ac98ffe98b",
+    "ext": "png",
+    "name": "Dark Waves 02",
+    "collection": "dark-waves",
     "size": 10660727,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P13.png",
     "hash": "d62f26cf4d",
+    "ext": "png",
+    "name": "Dark Waves 03",
+    "collection": "dark-waves",
     "size": 12071825,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P14.png",
     "hash": "585497000b",
+    "ext": "png",
+    "name": "Dark Waves 04",
+    "collection": "dark-waves",
     "size": 12325339,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P15.png",
     "hash": "a2ed8b41f3",
+    "ext": "png",
+    "name": "Dark Waves 05",
+    "collection": "dark-waves",
     "size": 12248655,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P16.png",
     "hash": "140143331d",
+    "ext": "png",
+    "name": "Dark Waves 06",
+    "collection": "dark-waves",
     "size": 12268271,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P17.png",
     "hash": "83de576202",
+    "ext": "png",
+    "name": "Dark Waves 07",
+    "collection": "dark-waves",
     "size": 11868990,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P18.png",
     "hash": "8588c4e6a4",
+    "ext": "png",
+    "name": "Dark Waves 08",
+    "collection": "dark-waves",
     "size": 13562823,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P19.png",
     "hash": "2e03bdc8af",
+    "ext": "png",
+    "name": "Dark Waves 09",
+    "collection": "dark-waves",
     "size": 12527333,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/dark-waves/P20.png",
     "hash": "d616ce689b",
+    "ext": "png",
+    "name": "Dark Waves 10",
+    "collection": "dark-waves",
     "size": 13251999,
     "added": 1790705582000
   },
   {
-    "path": "wallpapers/distort/1.jpg",
     "hash": "bf0fd468ee",
+    "ext": "jpg",
+    "name": "Distort 01",
+    "collection": "distort",
     "size": 97675,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/10.png",
     "hash": "821ed00c9a",
+    "ext": "png",
+    "name": "Distort 10",
+    "collection": "distort",
     "size": 311741,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/2.jpg",
     "hash": "e78405c1fe",
+    "ext": "jpg",
+    "name": "Distort 02",
+    "collection": "distort",
     "size": 510026,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/3.jpg",
     "hash": "8fbaf3673c",
+    "ext": "jpg",
+    "name": "Distort 03",
+    "collection": "distort",
     "size": 438969,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/4.png",
     "hash": "4f4b6cffd5",
+    "ext": "png",
+    "name": "Distort 04",
+    "collection": "distort",
     "size": 1593750,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/5.webp",
     "hash": "c105973869",
+    "ext": "webp",
+    "name": "Distort 05",
+    "collection": "distort",
     "size": 140772,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/6.jpg",
     "hash": "276b3e2008",
+    "ext": "jpg",
+    "name": "Distort 06",
+    "collection": "distort",
     "size": 68702,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/7.png",
     "hash": "3246a06bf3",
+    "ext": "png",
+    "name": "Distort 07",
+    "collection": "distort",
     "size": 26524630,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/8.png",
     "hash": "8798b71aae",
+    "ext": "png",
+    "name": "Distort 08",
+    "collection": "distort",
     "size": 37834413,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/distort/9.jpg",
     "hash": "c1780856e9",
+    "ext": "jpg",
+    "name": "Distort 09",
+    "collection": "distort",
     "size": 975338,
     "added": 1790705802000
   },
   {
-    "path": "wallpapers/firey-vivid/1.jpg",
     "hash": "5e92082076",
+    "ext": "jpg",
+    "name": "Fiery Vivid 1",
+    "collection": "fiery-vivid",
     "size": 6123646,
     "added": 1790706461000
   },
   {
-    "path": "wallpapers/firey-vivid/2.jpg",
     "hash": "af5a058d99",
+    "ext": "jpg",
+    "name": "Fiery Vivid 2",
+    "collection": "fiery-vivid",
     "size": 6466152,
     "added": 1790706461000
   },
   {
-    "path": "wallpapers/firey-vivid/3.jpg",
     "hash": "e9d408b147",
+    "ext": "jpg",
+    "name": "Fiery Vivid 3",
+    "collection": "fiery-vivid",
     "size": 6512953,
     "added": 1790706461000
   },
   {
-    "path": "wallpapers/firey-vivid/4.jpg",
     "hash": "dbc79c99a8",
+    "ext": "jpg",
+    "name": "Fiery Vivid 4",
+    "collection": "fiery-vivid",
     "size": 6138750,
     "added": 1790706461000
   },
   {
-    "path": "wallpapers/firey-vivid/5.jpg",
     "hash": "e085f21c9f",
+    "ext": "jpg",
+    "name": "Fiery Vivid 5",
+    "collection": "fiery-vivid",
     "size": 6846274,
     "added": 1790706461000
   },
   {
-    "path": "wallpapers/firey-vivid/6.jpg",
     "hash": "8b85d524ed",
+    "ext": "jpg",
+    "name": "Fiery Vivid 6",
+    "collection": "fiery-vivid",
     "size": 6716987,
     "added": 1790706461000
   },
   {
-    "path": "wallpapers/firey-vivid/7.jpg",
     "hash": "71816ff054",
+    "ext": "jpg",
+    "name": "Fiery Vivid 7",
+    "collection": "fiery-vivid",
     "size": 6847011,
     "added": 1790706461000
   },
   {
-    "path": "wallpapers/firey-vivid/8.jpg",
     "hash": "594268b644",
+    "ext": "jpg",
+    "name": "Fiery Vivid 8",
+    "collection": "fiery-vivid",
     "size": 6291612,
     "added": 1790706461000
   },
   {
-    "path": "wallpapers/forest/1.jpg",
     "hash": "f8a1379524",
+    "ext": "jpg",
+    "name": "Forest Road",
     "size": 1478513,
     "added": 1790705756000
   },
   {
-    "path": "wallpapers/forest/2.jpg",
     "hash": "21ecadabde",
+    "ext": "jpg",
+    "name": "Mirror Lake",
     "size": 2652614,
     "added": 1790705756000
   },
   {
-    "path": "wallpapers/forest/3.jpg",
     "hash": "530402c833",
+    "ext": "jpg",
+    "name": "Misty Pines",
     "size": 3002235,
     "added": 1790705756000
   },
   {
-    "path": "wallpapers/forest/4.jpg",
     "hash": "6360556c21",
+    "ext": "jpg",
+    "name": "Frosted Canopy",
     "size": 2400686,
     "added": 1790705756000
   },
   {
-    "path": "wallpapers/fractal-maze/01.jpg",
     "hash": "f1ed974f88",
+    "ext": "jpg",
+    "name": "Fractal Maze 01",
+    "collection": "fractal-maze",
     "size": 7785684,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/02.jpg",
     "hash": "cc2ceae535",
+    "ext": "jpg",
+    "name": "Fractal Maze 02",
+    "collection": "fractal-maze",
     "size": 7884347,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/03.jpg",
     "hash": "81f3e39db4",
+    "ext": "jpg",
+    "name": "Fractal Maze 03",
+    "collection": "fractal-maze",
     "size": 8376923,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/04.jpg",
     "hash": "5d7d011630",
+    "ext": "jpg",
+    "name": "Fractal Maze 04",
+    "collection": "fractal-maze",
     "size": 7668687,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/05.jpg",
     "hash": "e0c1ed0dec",
+    "ext": "jpg",
+    "name": "Fractal Maze 05",
+    "collection": "fractal-maze",
     "size": 8412603,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/06.jpg",
     "hash": "49a0af95c0",
+    "ext": "jpg",
+    "name": "Fractal Maze 06",
+    "collection": "fractal-maze",
     "size": 8668304,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/07.jpg",
     "hash": "c3ff6fe001",
+    "ext": "jpg",
+    "name": "Fractal Maze 07",
+    "collection": "fractal-maze",
     "size": 7935163,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/08.jpg",
     "hash": "c8e04425c4",
+    "ext": "jpg",
+    "name": "Fractal Maze 08",
+    "collection": "fractal-maze",
     "size": 7599371,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/09.jpg",
     "hash": "e3151a08aa",
+    "ext": "jpg",
+    "name": "Fractal Maze 09",
+    "collection": "fractal-maze",
     "size": 7528407,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/10.jpg",
     "hash": "cd44b73f91",
+    "ext": "jpg",
+    "name": "Fractal Maze 10",
+    "collection": "fractal-maze",
     "size": 8061327,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/11.jpg",
     "hash": "be15bac16a",
+    "ext": "jpg",
+    "name": "Fractal Maze 11",
+    "collection": "fractal-maze",
     "size": 7180970,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/12.jpg",
     "hash": "f4e245b689",
+    "ext": "jpg",
+    "name": "Fractal Maze 12",
+    "collection": "fractal-maze",
     "size": 7571862,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/13.jpg",
     "hash": "3e7e1e54cb",
+    "ext": "jpg",
+    "name": "Fractal Maze 13",
+    "collection": "fractal-maze",
     "size": 7699154,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/14.jpg",
     "hash": "0e2a31b4f4",
+    "ext": "jpg",
+    "name": "Fractal Maze 14",
+    "collection": "fractal-maze",
     "size": 7768909,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/15.jpg",
     "hash": "34914e7004",
+    "ext": "jpg",
+    "name": "Fractal Maze 15",
+    "collection": "fractal-maze",
     "size": 7996336,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/16.jpg",
     "hash": "cd494dbed0",
+    "ext": "jpg",
+    "name": "Fractal Maze 16",
+    "collection": "fractal-maze",
     "size": 7702260,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/17.jpg",
     "hash": "4b0a6a74ad",
+    "ext": "jpg",
+    "name": "Fractal Maze 17",
+    "collection": "fractal-maze",
     "size": 8058578,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/18.jpg",
     "hash": "830c0717be",
+    "ext": "jpg",
+    "name": "Fractal Maze 18",
+    "collection": "fractal-maze",
     "size": 7889769,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/19.jpg",
     "hash": "ab3abb4fdf",
+    "ext": "jpg",
+    "name": "Fractal Maze 19",
+    "collection": "fractal-maze",
     "size": 8039815,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/20.jpg",
     "hash": "afc7d3cd7d",
+    "ext": "jpg",
+    "name": "Fractal Maze 20",
+    "collection": "fractal-maze",
     "size": 7571227,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/21.jpg",
     "hash": "8e64d606f3",
+    "ext": "jpg",
+    "name": "Fractal Maze 21",
+    "collection": "fractal-maze",
     "size": 8254520,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/22.jpg",
     "hash": "2b79cb9a4d",
+    "ext": "jpg",
+    "name": "Fractal Maze 22",
+    "collection": "fractal-maze",
     "size": 8121508,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/23.jpg",
     "hash": "e3d8239cd1",
+    "ext": "jpg",
+    "name": "Fractal Maze 23",
+    "collection": "fractal-maze",
     "size": 8247703,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/24.jpg",
     "hash": "1106f51ce4",
+    "ext": "jpg",
+    "name": "Fractal Maze 24",
+    "collection": "fractal-maze",
     "size": 8197682,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/25.jpg",
     "hash": "cc976571b5",
+    "ext": "jpg",
+    "name": "Fractal Maze 25",
+    "collection": "fractal-maze",
     "size": 8178733,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/26.jpg",
     "hash": "50ae463715",
+    "ext": "jpg",
+    "name": "Fractal Maze 26",
+    "collection": "fractal-maze",
     "size": 9067117,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/27.jpg",
     "hash": "6f7653e879",
+    "ext": "jpg",
+    "name": "Fractal Maze 27",
+    "collection": "fractal-maze",
     "size": 8023080,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/28.jpg",
     "hash": "ac35b48725",
+    "ext": "jpg",
+    "name": "Fractal Maze 28",
+    "collection": "fractal-maze",
     "size": 8703855,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/29.jpg",
     "hash": "133547ecea",
+    "ext": "jpg",
+    "name": "Fractal Maze 29",
+    "collection": "fractal-maze",
     "size": 8007038,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/30.jpg",
     "hash": "47288c4a89",
+    "ext": "jpg",
+    "name": "Fractal Maze 30",
+    "collection": "fractal-maze",
     "size": 8267375,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/31.jpg",
     "hash": "66986dd024",
+    "ext": "jpg",
+    "name": "Fractal Maze 31",
+    "collection": "fractal-maze",
     "size": 7889968,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/32.jpg",
     "hash": "6d339c00af",
+    "ext": "jpg",
+    "name": "Fractal Maze 32",
+    "collection": "fractal-maze",
     "size": 8370042,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/33.jpg",
     "hash": "8ad02930fd",
+    "ext": "jpg",
+    "name": "Fractal Maze 33",
+    "collection": "fractal-maze",
     "size": 8243517,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/34.jpg",
     "hash": "20f4c8b521",
+    "ext": "jpg",
+    "name": "Fractal Maze 34",
+    "collection": "fractal-maze",
     "size": 7940807,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/35.jpg",
     "hash": "b2acc5bcb4",
+    "ext": "jpg",
+    "name": "Fractal Maze 35",
+    "collection": "fractal-maze",
     "size": 7704705,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/36.jpg",
     "hash": "8081d48621",
+    "ext": "jpg",
+    "name": "Fractal Maze 36",
+    "collection": "fractal-maze",
     "size": 8119658,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/37.jpg",
     "hash": "7602ada114",
+    "ext": "jpg",
+    "name": "Fractal Maze 37",
+    "collection": "fractal-maze",
     "size": 8765507,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/38.jpg",
     "hash": "675feacdd5",
+    "ext": "jpg",
+    "name": "Fractal Maze 38",
+    "collection": "fractal-maze",
     "size": 8735359,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/39.jpg",
     "hash": "e1c7a27f4b",
+    "ext": "jpg",
+    "name": "Fractal Maze 39",
+    "collection": "fractal-maze",
     "size": 8985417,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/40.jpg",
     "hash": "c099542d2e",
+    "ext": "jpg",
+    "name": "Fractal Maze 40",
+    "collection": "fractal-maze",
     "size": 8794853,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/41.jpg",
     "hash": "ea09568de9",
+    "ext": "jpg",
+    "name": "Fractal Maze 41",
+    "collection": "fractal-maze",
     "size": 8529675,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/42.jpg",
     "hash": "7ae9de8fca",
+    "ext": "jpg",
+    "name": "Fractal Maze 42",
+    "collection": "fractal-maze",
     "size": 7712255,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/43.jpg",
     "hash": "fc4c247131",
+    "ext": "jpg",
+    "name": "Fractal Maze 43",
+    "collection": "fractal-maze",
     "size": 7881458,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/44.jpg",
     "hash": "5d902928aa",
+    "ext": "jpg",
+    "name": "Fractal Maze 44",
+    "collection": "fractal-maze",
     "size": 7600494,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/45.jpg",
     "hash": "05945c77a8",
+    "ext": "jpg",
+    "name": "Fractal Maze 45",
+    "collection": "fractal-maze",
     "size": 8411158,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/46.jpg",
     "hash": "6ccb4fcc9d",
+    "ext": "jpg",
+    "name": "Fractal Maze 46",
+    "collection": "fractal-maze",
     "size": 8091505,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/47.jpg",
     "hash": "62012d149d",
+    "ext": "jpg",
+    "name": "Fractal Maze 47",
+    "collection": "fractal-maze",
     "size": 8714853,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/48.jpg",
     "hash": "47869c172b",
+    "ext": "jpg",
+    "name": "Fractal Maze 48",
+    "collection": "fractal-maze",
     "size": 8029229,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/49.jpg",
     "hash": "132054ba1a",
+    "ext": "jpg",
+    "name": "Fractal Maze 49",
+    "collection": "fractal-maze",
     "size": 7729832,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/50.jpg",
     "hash": "3f1f2e6e25",
+    "ext": "jpg",
+    "name": "Fractal Maze 50",
+    "collection": "fractal-maze",
     "size": 8051224,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/51.jpg",
     "hash": "6613e12d88",
+    "ext": "jpg",
+    "name": "Fractal Maze 51",
+    "collection": "fractal-maze",
     "size": 7874802,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/52.jpg",
     "hash": "f18c97e09f",
+    "ext": "jpg",
+    "name": "Fractal Maze 52",
+    "collection": "fractal-maze",
     "size": 7839470,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/53.jpg",
     "hash": "de171f6bfe",
+    "ext": "jpg",
+    "name": "Fractal Maze 53",
+    "collection": "fractal-maze",
     "size": 7682372,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/54.jpg",
     "hash": "241bb29512",
+    "ext": "jpg",
+    "name": "Fractal Maze 54",
+    "collection": "fractal-maze",
     "size": 7433017,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/55.jpg",
     "hash": "5f4c3a329e",
+    "ext": "jpg",
+    "name": "Fractal Maze 55",
+    "collection": "fractal-maze",
     "size": 7413485,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/56.jpg",
     "hash": "08c7d19e6a",
+    "ext": "jpg",
+    "name": "Fractal Maze 56",
+    "collection": "fractal-maze",
     "size": 6839428,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/57.jpg",
     "hash": "84691ec406",
+    "ext": "jpg",
+    "name": "Fractal Maze 57",
+    "collection": "fractal-maze",
     "size": 6718701,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/58.jpg",
     "hash": "00cffdd01e",
+    "ext": "jpg",
+    "name": "Fractal Maze 58",
+    "collection": "fractal-maze",
     "size": 7324435,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/59.jpg",
     "hash": "cab2c721a0",
+    "ext": "jpg",
+    "name": "Fractal Maze 59",
+    "collection": "fractal-maze",
     "size": 7351555,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fractal-maze/60.jpg",
     "hash": "96b1223455",
+    "ext": "jpg",
+    "name": "Fractal Maze 60",
+    "collection": "fractal-maze",
     "size": 7021793,
     "added": 1790706309000
   },
   {
-    "path": "wallpapers/fusion/1.png",
     "hash": "f464d9be00",
+    "ext": "png",
+    "name": "Fusion 1",
+    "collection": "fusion",
     "size": 14617176,
     "added": 1790705504000
   },
   {
-    "path": "wallpapers/fusion/2.png",
     "hash": "14fa1067e5",
+    "ext": "png",
+    "name": "Fusion 2",
+    "collection": "fusion",
     "size": 16561359,
     "added": 1790705504000
   },
   {
-    "path": "wallpapers/fusion/4.png",
     "hash": "8e2ca87f0e",
+    "ext": "png",
+    "name": "Fusion 3",
+    "collection": "fusion",
     "size": 2669479,
     "added": 1790705504000
   },
   {
-    "path": "wallpapers/fusion/5.png",
     "hash": "262a1a6f4b",
+    "ext": "png",
+    "name": "Fusion 4",
+    "collection": "fusion",
     "size": 15602331,
     "added": 1790705504000
   },
   {
-    "path": "wallpapers/fusion/6.png",
     "hash": "bea401f728",
+    "ext": "png",
+    "name": "Fusion 5",
+    "collection": "fusion",
     "size": 14834539,
     "added": 1790705504000
   },
   {
-    "path": "wallpapers/fusion/7.png",
     "hash": "e7a11813eb",
+    "ext": "png",
+    "name": "Fusion 6",
+    "collection": "fusion",
     "size": 14386461,
     "added": 1790705504000
   },
   {
-    "path": "wallpapers/grain/1.jpg",
     "hash": "53d31b2735",
+    "ext": "jpg",
+    "name": "Grain 1",
+    "collection": "grain",
     "size": 28985852,
     "added": 1790706031000
   },
   {
-    "path": "wallpapers/grain/2.jpg",
     "hash": "6eeae2029c",
+    "ext": "jpg",
+    "name": "Grain 2",
+    "collection": "grain",
     "size": 25400813,
     "added": 1790706031000
   },
   {
-    "path": "wallpapers/grain/3.jpg",
     "hash": "52d96ef208",
+    "ext": "jpg",
+    "name": "Grain 3",
+    "collection": "grain",
     "size": 23121661,
     "added": 1790706031000
   },
   {
-    "path": "wallpapers/grain/4.jpg",
     "hash": "0d89be6f22",
+    "ext": "jpg",
+    "name": "Grain 4",
+    "collection": "grain",
     "size": 22895283,
     "added": 1790706031000
   },
   {
-    "path": "wallpapers/grain/5.jpg",
     "hash": "21161b872e",
+    "ext": "jpg",
+    "name": "Grain 5",
+    "collection": "grain",
     "size": 25345047,
     "added": 1790706031000
   },
   {
-    "path": "wallpapers/grain/6.jpg",
     "hash": "bae519f544",
+    "ext": "jpg",
+    "name": "Grain 6",
+    "collection": "grain",
     "size": 24438529,
     "added": 1790706031000
   },
   {
-    "path": "wallpapers/grain/8.jpg",
     "hash": "c11ea17732",
+    "ext": "jpg",
+    "name": "Grain 7",
+    "collection": "grain",
     "size": 22620009,
     "added": 1790706031000
   },
   {
-    "path": "wallpapers/mountains/1.jpg",
     "hash": "f17141be85",
+    "ext": "jpg",
+    "name": "Blue Summit",
+    "collection": "mountains",
     "size": 2595345,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/10.jpg",
     "hash": "0c6b8a6db8",
+    "ext": "jpg",
+    "name": "Northern Lights",
+    "collection": "mountains",
     "size": 3619463,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/11.jpg",
     "hash": "ca574447df",
+    "ext": "jpg",
+    "name": "Aurora",
     "size": 11027909,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/12.jpg",
     "hash": "f51068a4d1",
+    "ext": "jpg",
+    "name": "Golden Cliffs",
+    "collection": "mountains",
     "size": 5844061,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/13.jpg",
     "hash": "7f844ce93d",
+    "ext": "jpg",
+    "name": "Teal Summit",
+    "collection": "mountains",
     "size": 1032442,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/14.jpg",
     "hash": "862b061ea8",
+    "ext": "jpg",
+    "name": "Last Light",
+    "collection": "mountains",
     "size": 1950018,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/2.jpg",
     "hash": "6344a2a780",
+    "ext": "jpg",
+    "name": "Mojave Night",
     "size": 17235975,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/3.jpg",
     "hash": "3c85b0e7ba",
+    "ext": "jpg",
+    "name": "Crimson Ridge",
+    "collection": "mountains",
     "size": 9157609,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/4.jpg",
     "hash": "ce6a4d0687",
+    "ext": "jpg",
+    "name": "Mount Fuji",
+    "collection": "mountains",
     "size": 681493,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/5.jpeg",
     "hash": "3bf38b0657",
+    "ext": "jpeg",
+    "name": "Alpenglow",
+    "collection": "mountains",
     "size": 10758504,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/6.jpg",
     "hash": "da4d5e1e95",
+    "ext": "jpg",
+    "name": "Misty Valley",
+    "collection": "mountains",
     "size": 2854006,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/7.jpg",
     "hash": "16734ba7ee",
+    "ext": "jpg",
+    "name": "Aoraki",
+    "collection": "mountains",
     "size": 1080192,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/8.jpg",
     "hash": "6f9308858d",
+    "ext": "jpg",
+    "name": "Grey Peaks",
+    "collection": "mountains",
     "size": 1344703,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/mountains/9.jpg",
     "hash": "5ca70ee585",
+    "ext": "jpg",
+    "name": "Galaxy over the Lake",
+    "collection": "mountains",
     "size": 6175027,
     "added": 1790705671000
   },
   {
-    "path": "wallpapers/paintings/1.jpg",
     "hash": "bb09d22e8d",
+    "ext": "jpg",
+    "name": "The Apotheosis of Hercules",
+    "collection": "paintings",
     "size": 22390225,
     "added": 1790705716000
   },
   {
-    "path": "wallpapers/paintings/2.jpg",
     "hash": "4cee4c0679",
+    "ext": "jpg",
+    "name": "The Impending Storm",
+    "collection": "paintings",
     "size": 1425087,
     "added": 1790705716000
   },
   {
-    "path": "wallpapers/plants/1.jpg",
     "hash": "0e146acf2e",
+    "ext": "jpg",
+    "name": "Calla Leaf",
     "size": 1812810,
     "added": 1790705611000
   },
   {
-    "path": "wallpapers/plants/2.jpg",
     "hash": "66b18ea320",
+    "ext": "jpg",
+    "name": "Monstera",
     "size": 1333857,
     "added": 1790705611000
   },
   {
-    "path": "wallpapers/plants/3.jpg",
     "hash": "87d90048ba",
+    "ext": "jpg",
+    "name": "Wet Leaves",
     "size": 3123783,
     "added": 1790705611000
   },
   {
-    "path": "wallpapers/plants/4.jpg",
     "hash": "cf8cd5042d",
+    "ext": "jpg",
+    "name": "Feather Grass",
     "size": 945644,
     "added": 1790705611000
+  },
+  {
+    "hash": "6cd050c604",
+    "ext": "jpg",
+    "name": "Zhangjiajie National Park",
+    "collection": "mountains",
+    "size": 5625865,
+    "added": 1793716793800
+  },
+  {
+    "hash": "3126f4d298",
+    "ext": "jpg",
+    "name": "Annapurna",
+    "collection": "mountains",
+    "size": 272081,
+    "added": 1793716796207
+  },
+  {
+    "hash": "72bf3e1b92",
+    "ext": "png",
+    "name": "Canmore, Alberta",
+    "collection": "mountains",
+    "size": 7516616,
+    "added": 1793716799016
+  },
+  {
+    "hash": "925a623965",
+    "ext": "png",
+    "name": "Cosmic Night",
+    "collection": "mountains",
+    "size": 10636443,
+    "added": 1793716802941
+  },
+  {
+    "hash": "aa514eea3a",
+    "ext": "jpg",
+    "name": "Everest",
+    "collection": "mountains",
+    "size": 800343,
+    "added": 1793716806963
+  },
+  {
+    "hash": "fd474f2272",
+    "ext": "png",
+    "name": "Fractal Glass Blue",
+    "collection": "fractal-glass",
+    "size": 1427228,
+    "added": 1793716811733
+  },
+  {
+    "hash": "7c0458e327",
+    "ext": "png",
+    "name": "Fractal Glass Green",
+    "collection": "fractal-glass",
+    "size": 1379501,
+    "added": 1793716815335
+  },
+  {
+    "hash": "5a421e4686",
+    "ext": "png",
+    "name": "Fractal Glass Orange",
+    "collection": "fractal-glass",
+    "size": 1362888,
+    "added": 1793716818858
+  },
+  {
+    "hash": "38a70bd6bf",
+    "ext": "png",
+    "name": "Fractal Glass Purple",
+    "collection": "fractal-glass",
+    "size": 1419095,
+    "added": 1793716822585
+  },
+  {
+    "hash": "9f9e4efc78",
+    "ext": "png",
+    "name": "Glass Palette",
+    "size": 9184726,
+    "added": 1793716826217
+  },
+  {
+    "hash": "d8f686e840",
+    "ext": "jpg",
+    "name": "Lake McDonald",
+    "collection": "mountains",
+    "size": 589657,
+    "added": 1793716829454
+  },
+  {
+    "hash": "0e9e47d843",
+    "ext": "png",
+    "name": "Lake Tahoe",
+    "size": 10899720,
+    "added": 1793716833032
+  },
+  {
+    "hash": "8da4a51b31",
+    "ext": "jpg",
+    "name": "Machapuchare",
+    "collection": "mountains",
+    "size": 3995712,
+    "added": 1793716835409
+  },
+  {
+    "hash": "889e51c5b6",
+    "ext": "png",
+    "name": "Minimalist Architecture",
+    "size": 6542318,
+    "added": 1793716837971
+  },
+  {
+    "hash": "598107f1c3",
+    "ext": "png",
+    "name": "Mountain View",
+    "collection": "mountains",
+    "size": 10253964,
+    "added": 1793716840697
+  },
+  {
+    "hash": "2a74120ca3",
+    "ext": "png",
+    "name": "Norway Sea",
+    "size": 6560112,
+    "added": 1793716843334
+  },
+  {
+    "hash": "67cf0bb0a0",
+    "ext": "jpg",
+    "name": "Poon Hill",
+    "collection": "mountains",
+    "size": 518037,
+    "added": 1793716846365
+  },
+  {
+    "hash": "4215a95963",
+    "ext": "jpg",
+    "name": "Silent Migration Across a Crimson Sky",
+    "size": 1032184,
+    "added": 1793716849780
+  },
+  {
+    "hash": "a19dc8ce02",
+    "ext": "jpg",
+    "name": "Somewhere Between Episodes",
+    "size": 1372859,
+    "added": 1793716852817
+  },
+  {
+    "hash": "75e209fd55",
+    "ext": "png",
+    "name": "Swiss Alps",
+    "collection": "mountains",
+    "size": 11386456,
+    "added": 1793716856794
   }
 ]

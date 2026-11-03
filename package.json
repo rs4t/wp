@@ -5,7 +5,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
-    "dev": "node scripts/build.mjs && node scripts/serve.mjs"
+    "dev": "node scripts/build.mjs && node scripts/serve.mjs",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "engines": {
     "node": ">=20"

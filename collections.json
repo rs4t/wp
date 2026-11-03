@@ -1,0 +1,40 @@
+[
+  {
+    "id": "fractal-maze",
+    "name": "Fractal Maze"
+  },
+  {
+    "id": "dark-waves",
+    "name": "Dark Waves"
+  },
+  {
+    "id": "distort",
+    "name": "Distort"
+  },
+  {
+    "id": "fiery-vivid",
+    "name": "Fiery Vivid"
+  },
+  {
+    "id": "grain",
+    "name": "Grain"
+  },
+  {
+    "id": "fusion",
+    "name": "Fusion"
+  },
+  {
+    "id": "fractal-glass",
+    "name": "Fractal Glass"
+  },
+  {
+    "id": "mountains",
+    "name": "Mountains",
+    "cover": "3c85b0e7ba"
+  },
+  {
+    "id": "paintings",
+    "name": "Paintings",
+    "cover": "bb09d22e8d"
+  }
+]
