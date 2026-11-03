@@ -161,6 +161,7 @@
     saveFavs();
     const t = tiles.get(it.id);
     t?.el.classList.toggle('faved', on);
+    t?.el.querySelector('.heart').setAttribute('aria-pressed', String(on));
     if (on) for (const el of [t?.el.querySelector('.heart'), cur === it ? $('#fav') : null]) {
       if (el) { el.classList.remove('pop'); el.offsetWidth; el.classList.add('pop'); }
     }
@@ -255,7 +256,7 @@
           ? `<div class="meta"><b>${escapeHtml(it.name)}</b>${it.caption ? `<span class="mono">${escapeHtml(it.caption)}</span>` : ''}</div>`
           : `<div class="meta"><b>${escapeHtml(it.title)}</b><span class="mono">${it.w}×${it.h}</span></div>`) +
         (it.new ? `<span class="new">new</span>` : '') +
-        `<span class="heart" role="button" aria-label="Favorite">${HEART}</span>` +
+        `<span class="heart" role="button" tabindex="0" aria-label="Favorite ${escapeHtml(it.title)}" aria-pressed="${favs.has(it.hash)}">${HEART}</span>` +
         `</div></div></div>`;
       if (favs.has(it.hash)) a.classList.add('faved');
       const img = a.querySelector('img');
@@ -267,6 +268,10 @@
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         e.preventDefault();
         openLightbox(it, { fromTile: true, push: true });
+      });
+      a.querySelector('.heart').addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault(); e.stopPropagation(); toggleFav(it);
       });
       if (finePointer && !reduced) bindTilt(a);
       tiles.set(it.id, { el: a, card: a.querySelector('.card'), tilt: a.querySelector('.tilt'), img, src: a.querySelector('source') });

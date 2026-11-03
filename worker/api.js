@@ -121,6 +121,8 @@ function uniquePath(category, name, extension, taken) {
 // ---------- handlers ----------
 
 async function login(request, env) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (env.LOGIN_LIMIT && !(await env.LOGIN_LIMIT.limit({ key: ip })).success) return fail(429, 'Too many tries — wait a minute');
   const { password } = await request.json().catch(() => ({}));
   if (typeof password === 'string' && (await safeEqual(password, env.ADMIN_PASSWORD))) {
     return json({ ok: true }, 200, { 'Set-Cookie': cookie(await makeSession(env), SESSION_DAYS * 86400) });

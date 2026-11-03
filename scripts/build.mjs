@@ -410,13 +410,13 @@ const homeDesc = n
   : 'A collection of high-resolution wallpapers.';
 
 await writeFile(path.join(OUT, 'index.html'), renderPage(tpl, {
-  root: './', title: SITE_NAME, description: homeDesc, url: SITE_URL,
+  root: '/', title: SITE_NAME, description: homeDesc, url: SITE_URL,
   image: items[0] ? SITE_URL + items[0].og : '', color: '#0a0a0b',
 }));
 
 await mkdir(path.join(OUT, 'community'), { recursive: true });
 await writeFile(path.join(OUT, 'community', 'index.html'), renderPage(tpl, {
-  root: '../', page: 'community', title: `community — ${SITE_NAME}`,
+  root: '/', page: 'community', title: `community — ${SITE_NAME}`,
   description: setups.length ? `${setups.length} desk setup${setups.length === 1 ? '' : 's'} using wallpapers from ${SITE_NAME}. Share yours.` : `Share your setup with a wallpaper from ${SITE_NAME}.`,
   url: `${SITE_URL}community/`, image: (setups[0] || items[0]) ? SITE_URL + (setups[0] || items[0]).og : '', color: '#0a0a0b',
 }));
@@ -426,7 +426,7 @@ for (const it of items) {
   const dir = path.join(OUT, 'w', it.id);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, 'index.html'), renderPage(tpl, {
-    root: '../../',
+    root: '/',
     title: `${it.title} — ${SITE_NAME}`,
     description: `${it.w} × ${it.h} · ${it.ratio} · ${mb(it.size)}${it.cat ? ` · ${it.cat}` : ''}. From ${SITE_NAME}.`,
     url: `${SITE_URL}w/${it.id}/`,

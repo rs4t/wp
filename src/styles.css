@@ -147,7 +147,7 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
   opacity: 0; transform: scale(0.85); transition: opacity 0.3s, transform 0.4s var(--ease-out), background-color 0.2s;
 }
 .heart:hover { background: rgba(10, 10, 11, 0.7); }
-.tile.faved .heart { opacity: 1; transform: none; }
+.tile.faved .heart, .tile:focus-visible .heart, .heart:focus-visible { opacity: 1; transform: none; }
 .tile.faved .heart svg, .fav-btn[aria-pressed='true'] svg { fill: #ff5a6e; stroke: #ff5a6e; }
 .pop { animation: pop 0.5s var(--ease-out); }
 @keyframes pop { 30% { transform: scale(1.35); } }
@@ -373,10 +373,11 @@ main { padding: 10px var(--gutter) 0; }
 }
 
 /* ---------- pages: gallery vs community ---------- */
-body[data-page='community'] [data-only='gallery'],
-body[data-page='gallery'] [data-only='community'] { display: none !important; }
 [data-submit] { display: none !important; }
 body.can-submit [data-submit] { display: inline-flex !important; }
+/* After the submit rules: a community-only submit button stays hidden on the gallery. */
+body[data-page='community'] [data-only='gallery'],
+body[data-page='gallery'] [data-only='community'] { display: none !important; }
 .tag { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--mute); margin-top: 6px; }
 .community-sub { justify-content: space-between; padding-bottom: 14px; flex-wrap: wrap; }
 .community-sub p { margin: 0; }

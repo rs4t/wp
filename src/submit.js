@@ -11,7 +11,7 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const mb = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
 
-  let cfg = null, modal = null, widgetId = null, token = '';
+  let cfg = null, modal = null, widgetId = null, token = '', opener = null;
   const st = { type: null, files: [], picks: [], busy: false };
 
   fetch(api('config')).then((r) => r.json()).then((c) => {
@@ -99,7 +99,15 @@
       const pick = e.target.closest('[data-pick]');
       if (pick) togglePick(pick.dataset.pick);
     });
-    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+      if (e.key !== 'Tab') return;
+      // Keep Tab inside the dialog.
+      const f = [...modal.querySelectorAll('button, a[href], input, select, textarea')].filter((el) => !el.disabled && el.offsetParent !== null);
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
     const input = modal.querySelector('.sub-drop input');
     input.addEventListener('change', () => { addFiles(input.files); input.value = ''; });
     const drop = modal.querySelector('.sub-drop');
@@ -112,15 +120,18 @@
 
   function open(type) {
     if (!modal) build();
+    opener = document.activeElement;
     modal.classList.add('open');
     document.documentElement.classList.add('locked');
     if (type === 'setup' || type === 'wallpaper') show(type); else step('pick');
+    modal.querySelector('.sub-x').focus();
     loadTurnstile();
   }
   function close() {
     if (st.busy) return;
     modal.classList.remove('open');
     document.documentElement.classList.remove('locked');
+    opener?.focus?.();
     if (modal.querySelector('[data-step="done"]').hidden === false) reset();
   }
   function reset() {
