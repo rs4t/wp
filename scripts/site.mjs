@@ -64,6 +64,44 @@ export async function fetchPrevious(url, fetchFn = fetch, delayMs = 2000) {
   }, 3, delayMs);
 }
 
+// "new" badge: added in the last `days`, at most the `max` newest, and never the
+// first batch (on a brand-new site everything is new, so nothing is).
+export function markNew(items, now, { days = 14, max = 12 } = {}) {
+  const firstBatch = items.reduce((m, i) => Math.min(m, i.added), Infinity) + 864e5;
+  const recent = items.filter((i) => now - i.added < days * 864e5 && i.added > firstBatch)
+    .sort((a, b) => b.added - a.added).slice(0, max);
+  const pick = new Set(recent);
+  for (const it of items) it.new = pick.has(it);
+  return items;
+}
+
+// Collections whose newest wallpaper is most recent come first.
+export function orderCollections(collections, items) {
+  const latest = new Map();
+  for (const it of items) if (it.coll) latest.set(it.coll, Math.max(latest.get(it.coll) ?? -Infinity, it.added));
+  return collections.map((c, i) => [c, latest.get(c.id) ?? -Infinity, i])
+    .sort((a, b) => b[1] - a[1] || a[2] - b[2]).map(([c]) => c);
+}
+
+// One entry per credited creator (most work first); cover = their newest wallpaper.
+export function creatorsOf(items) {
+  const by = new Map();
+  for (const it of items) {
+    if (!it.credit?.name) continue;
+    const id = slugify(it.credit.name);
+    const c = by.get(id) || { id, name: it.credit.name, count: 0, cover: it.hash, added: -Infinity };
+    c.count++;
+    if (it.added > c.added) { c.added = it.added; c.cover = it.hash; }
+    if (it.credit.link && !c.link) c.link = it.credit.link;
+    by.set(id, c);
+  }
+  return [...by.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .map(({ added, ...c }) => c);
+}
+
+// Template {{key}} → value, inserted literally (a "$" in a name stays a "$").
+export const fill = (tpl, vars) => Object.entries(vars).reduce((t, [k, v]) => t.replaceAll(`{{${k}}}`, () => v), tpl);
+
 // Cloudflare static-assets _redirects file.
 export const redirectsFile = (redirects) =>
   Object.entries(redirects).flatMap(([a, b]) => [`/w/${a} /w/${b}/ 301`, `/w/${a}/ /w/${b}/ 301`])

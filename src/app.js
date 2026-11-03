@@ -9,7 +9,9 @@
   const pageUrl = (id) => url(id ? `w/${encodeURIComponent(id)}/` : '');
   // A collection page shows only its wallpapers; closing the viewer comes back to it.
   const COLL = body.dataset.page === 'collection' ? body.dataset.collection : null;
-  const HOME = COLL ? url(`c/${encodeURIComponent(COLL)}/`) : url('');
+  const CREATOR = body.dataset.page === 'creator' ? body.dataset.creator : null;
+  const HOME = COLL ? url(`c/${encodeURIComponent(COLL)}/`) : CREATOR ? url(`by/${encodeURIComponent(CREATOR)}/`) : url('');
+  const SUBSET = !!(COLL || CREATOR);
   const routeUrl = (id) => (id ? pageUrl(id) : HOME) + location.search;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -33,8 +35,8 @@
   const raf = () => new Promise((r) => requestAnimationFrame(() => r()));
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const store = {
-    get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
-    set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
   const SWATCH = { red: '#e5484d', orange: '#f76b15', yellow: '#ffc53d', green: '#46a758', teal: '#12a594', blue: '#3e63dd', purple: '#8e4ec6', pink: '#d6409f', light: '#e8e6e1', gray: '#8b8d98', dark: '#1a1a1d' };
   function toast(msg) {
@@ -62,7 +64,7 @@
     window.WP = { data: m, url };
     const collName = new Map(m.collections.map((c) => [c.id, c.name]));
     for (const it of m.items) it.collName = collName.get(it.coll) || '';
-    items = COLL ? m.items.filter((it) => it.coll === COLL) : m.items;
+    items = COLL ? m.items.filter((it) => it.coll === COLL) : CREATOR ? m.items.filter((it) => it.by === CREATOR) : m.items;
     items.forEach((it, i) => { it.i = i; byId.set(it.id, it); });
     // A wallpaper opened directly from another collection still needs its viewer.
     if (body.dataset.initial && !byId.has(body.dataset.initial)) {
@@ -108,7 +110,7 @@
     if (initial && byId.has(initial)) {
       revealAll(true);
       openLightbox(byId.get(initial), { fromTile: false, push: false });
-    } else if (!COLL && !reduced && items.length && !store.get('intro')) {
+    } else if (!SUBSET && !reduced && items.length && !store.get('intro')) {
       store.set('intro', '1');
       intro();
     } else {
@@ -257,8 +259,8 @@
   // ---------- collections strip / footer ----------
   function buildStrip() {
     const strip = $('#strip');
-    $('#wallHead').classList.toggle('coll', !!COLL);
-    if (COLL || !data.collections.length) return;
+    $('#wallHead').classList.toggle('coll', SUBSET);
+    if (SUBSET || !data.collections.length) return;
     bindStripWheel(strip);
     const byHash = new Map(data.items.map((i) => [i.hash, i]));
     strip.innerHTML = data.collections.map((c) => {
@@ -600,7 +602,9 @@
     ambIdx ^= 1;
   }
 
-  const creditHtml = (c) => (c.link
+  const creditHtml = (c, by) => (by
+    ? `by <a href="${url(`by/${encodeURIComponent(by)}/`)}">${escapeHtml(c.name)}</a>`
+    : c.link
     ? `by <a href="${escapeHtml(c.link)}" target="_blank" rel="noopener nofollow ugc">${escapeHtml(c.name)}</a>`
     : `by ${escapeHtml(c.name)}`);
 
@@ -610,7 +614,7 @@
     lbIdx.textContent = idx >= 0 ? `${pad(idx + 1)} / ${pad(n)}` : '';
     const credit = $('#lbCredit'), coll = $('#lbColl');
     credit.hidden = !it.credit;
-    if (it.credit) credit.innerHTML = creditHtml(it.credit);
+    if (it.credit) credit.innerHTML = creditHtml(it.credit, it.by);
     coll.hidden = !it.coll;
     if (it.coll) { coll.href = url(`c/${encodeURIComponent(it.coll)}/`); coll.textContent = it.collName; }
     lbTitle.textContent = it.name;
@@ -684,7 +688,8 @@
     const it = cur;
     resetZoom(false);
     if (push) history.pushState({}, '', routeUrl(''));
-    document.title = COLL ? `${data.collections.find((c) => c.id === COLL)?.name} — egor's wallpapers` : "egor's wallpapers";
+    const pageName = COLL ? data.collections.find((c) => c.id === COLL)?.name : CREATOR ? data.creators.find((c) => c.id === CREATOR)?.name : '';
+    document.title = pageName ? `${pageName} — egor's wallpapers` : "egor's wallpapers";
     lb.classList.add('leaving');
     lb.classList.remove('ready');
 

@@ -9,7 +9,7 @@ const opts = { skip: built ? false : 'dist/ missing — run npm run build' };
 const m = built ? JSON.parse(readFileSync(dist('manifest.json'), 'utf8')) : null;
 
 test('manifest has every wallpaper', opts, () => {
-  assert.equal(m.items.length, 177);
+  assert.equal(m.items.length, JSON.parse(readFileSync(new URL('../wallpapers.json', import.meta.url), 'utf8')).length);
   assert.ok(!('setups' in m) && !('categories' in m));
 });
 
@@ -30,6 +30,22 @@ test('every item points at a real collection', opts, () => {
   const ids = new Set(m.collections.map((c) => c.id));
   for (const it of m.items) assert.ok(it.coll === null || ids.has(it.coll), it.id);
   assert.equal(m.collections.find((c) => c.id === 'mountains').count, m.items.filter((i) => i.coll === 'mountains').length);
+});
+
+test('every credited creator has a page and items link to it', opts, () => {
+  assert.ok(m.creators.length > 0);
+  for (const c of m.creators) assert.ok(existsSync(dist(`by/${c.id}/index.html`)), c.id);
+  for (const it of m.items) if (it.credit) assert.ok(m.creators.some((c) => c.id === it.by), it.id);
+});
+
+test('at most 12 wallpapers carry the new badge', opts, () => {
+  assert.ok(m.items.filter((i) => i.new).length <= 12);
+});
+
+test('fonts are served from the site, not Google', opts, () => {
+  const html = readFileSync(dist('index.html'), 'utf8');
+  assert.ok(!html.includes('fonts.googleapis.com'));
+  assert.ok(existsSync(dist('fonts/instrument-serif-italic.woff2')));
 });
 
 test('downloads are named after the slug', opts, () => {

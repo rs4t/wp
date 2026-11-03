@@ -66,14 +66,20 @@
   function pickCollection(select) {
     if (select.value !== '__new__') return select.value;
     const name = prompt('New collection name:')?.trim();
-    const id = name && slug(name);
-    if (!id) { select.value = ''; return null; }
+    if (!name) { select.value = ''; return null; }
+    // Names without Latin letters (e.g. "Горы") still need a URL-safe id.
+    const id = slug(name) || `c-${Date.now().toString(36)}`;
     if (!allColls().some((c) => c.id === id)) state.newColls.push({ id, name: name.slice(0, 40) });
     select.innerHTML = collOptions(id, [...select.options].filter((o) => o.value === '__keep__').map((o) => [o.value, o.text]));
     return id;
   }
-  // Collections list to send when this save created one.
-  const withNewColls = (body) => (state.newColls.length ? { ...body, collections: allColls() } : body);
+  // Collections list to send when this save puts something into a collection created here;
+  // a "new collection…" that was picked and then abandoned is dropped.
+  function withNewColls(body) {
+    const used = new Set([...(body.add || []), ...(body.update || [])].map((x) => x.collection).filter(Boolean));
+    state.newColls = state.newColls.filter((c) => used.has(c.id));
+    return state.newColls.length ? { ...body, collections: allColls() } : body;
+  }
 
   // ---------- auth ----------
   function showLogin() { $('#app').hidden = true; $('#login').hidden = false; $('#pw').focus(); }
@@ -243,8 +249,6 @@
         <input type="text" class="c-name" value="${esc(c.name)}" maxlength="40" aria-label="Collection name">
         <span class="mono dim">${members.length}</span>
         <select class="c-cover" aria-label="Cover">${covers}</select>
-        <button class="btn ghost small" type="button" data-move="-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button>
-        <button class="btn ghost small" type="button" data-move="1" aria-label="Move down"${i < draft.length - 1 ? '' : ' disabled'}>↓</button>
       </li>`;
     }).join('') || '<li class="empty mono">no collections yet — pick "new collection…" when uploading</li>';
   }
@@ -253,13 +257,6 @@
     if (e.target.classList.contains('c-name')) c.name = e.target.value;
     if (e.target.classList.contains('c-cover')) { if (e.target.value) c.cover = e.target.value; else delete c.cover; }
     $('#saveColls').disabled = JSON.stringify(state.draft) === JSON.stringify(state.collections);
-  });
-  $('#colls').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-move]');
-    if (!b) return;
-    const i = +b.closest('.coll').dataset.i, j = i + +b.dataset.move;
-    [state.draft[i], state.draft[j]] = [state.draft[j], state.draft[i]];
-    renderColls();
   });
   $('#saveColls').addEventListener('click', async () => {
     if (state.draft.some((c) => !c.name.trim())) return toast('Every collection needs a name');
@@ -288,7 +285,16 @@
       const q = { id: Math.random().toString(36).slice(2), file, ext, name: niceName(file.name), url: URL.createObjectURL(file), status: 'ready' };
       state.queue.push(q);
       const img = new Image();
-      img.onload = () => { q.res = `${img.naturalWidth}×${img.naturalHeight}`; const m = document.querySelector(`[data-q="${q.id}"] .q-res`); if (m) m.textContent = q.res; };
+      img.onload = () => {
+        // Desktop wallpapers only: vertical images leave the queue.
+        if (img.naturalHeight > img.naturalWidth) {
+          state.queue = state.queue.filter((x) => x !== q);
+          URL.revokeObjectURL(q.url);
+          toast(`Skipped ${file.name}: vertical — the site is desktop wallpapers only`);
+          return renderQueue();
+        }
+        q.res = `${img.naturalWidth}×${img.naturalHeight}`; const m = document.querySelector(`[data-q="${q.id}"] .q-res`); if (m) m.textContent = q.res;
+      };
       img.src = q.url;
     }
     if (skipped.length) toast(`Skipped: ${skipped.join(', ')}`);

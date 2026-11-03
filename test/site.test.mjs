@@ -1,7 +1,45 @@
 // Slugs and redirects: every old link keeps working, no live page gets hidden.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slugify, assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry, loadJson, fetchPrevious } from '../scripts/site.mjs';
+import { slugify, assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry, loadJson, fetchPrevious, markNew, orderCollections, creatorsOf, fill } from '../scripts/site.mjs';
+
+const DAY = 864e5;
+
+test('markNew: only the newest few recent wallpapers get the badge', () => {
+  const now = 100 * DAY;
+  const items = [{ added: 0 }, ...Array.from({ length: 20 }, (_, i) => ({ added: now - i * 3600e3 }))];
+  markNew(items, now, { days: 14, max: 12 });
+  assert.equal(items.filter((i) => i.new).length, 12);
+  assert.ok(items[1].new && !items[20].new, 'the newest ones win');
+  assert.equal(items[0].new, false);
+});
+
+test('markNew: nothing is new on a brand-new site', () => {
+  const items = Array.from({ length: 5 }, () => ({ added: 10 * DAY }));
+  markNew(items, 10 * DAY, { days: 14, max: 12 });
+  assert.ok(items.every((i) => !i.new));
+});
+
+test('orderCollections: most recently updated first, ties keep their order', () => {
+  const cols = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const items = [{ coll: 'a', added: 1 }, { coll: 'b', added: 5 }, { coll: 'c', added: 1 }, { coll: 'a', added: 2 }];
+  assert.deepEqual(orderCollections(cols, items).map((c) => c.id), ['b', 'a', 'c']);
+});
+
+test('creatorsOf: one entry per credited name, most work first', () => {
+  const items = [
+    { credit: { name: 'alexandr' }, added: 1, hash: 'x1' }, { credit: { name: 'Ryku', link: 'https://r.k/' }, added: 2, hash: 'y1' },
+    { credit: { name: 'alexandr' }, added: 3, hash: 'x2' }, {},
+  ];
+  assert.deepEqual(creatorsOf(items), [
+    { id: 'alexandr', name: 'alexandr', count: 2, cover: 'x2' },
+    { id: 'ryku', name: 'Ryku', count: 1, cover: 'y1', link: 'https://r.k/' },
+  ]);
+});
+
+test('fill: values with $ are inserted literally', () => {
+  assert.equal(fill('<t>{{title}}</t><b>x</b>', { title: "A $' $& B" }), "<t>A $' $& B</t><b>x</b>");
+});
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';

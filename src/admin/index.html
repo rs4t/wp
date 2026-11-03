@@ -8,9 +8,7 @@
 <meta name="theme-color" content="#0a0a0b">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="preload" href="/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="admin.css">
 </head>
 <body>
@@ -74,7 +72,7 @@
       <button class="btn solid small" id="saveColls" type="button" disabled>save</button>
     </div>
     <ul class="colls" id="colls"></ul>
-    <p class="mono dim hint">Order here is the order on the site. Empty collections stay hidden.</p>
+    <p class="mono dim hint">The site shows the most recently updated collections first. Empty collections stay hidden.</p>
   </section>
 
   <!-- sticky action bars -->

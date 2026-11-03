@@ -23,7 +23,7 @@
   // v3 removed the community submissions inbox.
   "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "Stats" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Stats"] }, { "tag": "v2", "new_sqlite_classes": ["Inbox"] }, { "tag": "v3", "deleted_classes": ["Inbox"] }],
-  // Original wallpaper and setup files (orig/<hash>), listed in wallpapers.json and community/setups.json.
+  // Original wallpaper files (orig/<hash>), listed in wallpapers.json.
   "r2_buckets": [{ "binding": "WALLS", "bucket_name": "wp-wallpapers" }],
   // Admin uploads commit here. Secrets ADMIN_PASSWORD and GITHUB_TOKEN are set in the dashboard.
   // Admin login: at most 5 password tries per IP per minute.

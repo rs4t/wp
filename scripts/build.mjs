@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import sharp from 'sharp';
-import { assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry, loadJson, fetchPrevious } from './site.mjs';
+import { assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry, loadJson, fetchPrevious, markNew, orderCollections, creatorsOf, fill } from './site.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
@@ -19,6 +19,7 @@ const OUT = path.join(ROOT, 'dist');
 const SITE_URL = (process.env.SITE_URL || 'https://wp.egorz.com').replace(/\/+$/, '') + '/';
 const SITE_NAME = "egor's wallpapers";
 const NEW_DAYS = 14;
+const NEW_MAX = 12;
 const THUMB_WIDTHS = [480, 960, 1440];
 const PREVIEW_EDGE = 2880;
 // Bump when image outputs or analysis change: forces a full reprocess instead of
@@ -174,29 +175,23 @@ async function reuseImage(hash, ext, slug, downloadStem, old) {
 
 // ---------- pages ----------
 
-function renderPage(tpl, { title, description, url, image, color, initial, page = 'gallery', collection = '', banner = '' }) {
-  return tpl
-    .replaceAll('{{root}}', '/')
-    .replaceAll('{{title}}', esc(title))
-    .replaceAll('{{description}}', esc(description))
-    .replaceAll('{{url}}', esc(url))
-    .replaceAll('{{image}}', esc(image || ''))
-    .replaceAll('{{color}}', esc(color || '#0a0a0b'))
-    .replaceAll('{{initial}}', esc(initial || ''))
-    .replaceAll('{{page}}', page)
-    .replaceAll('{{collection}}', esc(collection))
-    .replaceAll('{{banner}}', banner)
-    .replaceAll('{{css}}', assets.css)
-    .replaceAll('{{js}}', assets.js)
-    .replaceAll('{{search}}', assets.search);
+function renderPage(tpl, { title, description, url, image, color, initial, page = 'gallery', collection = '', creator = '', banner = '' }) {
+  return fill(tpl, {
+    root: '/', title: esc(title), description: esc(description), url: esc(url), image: esc(image || ''),
+    color: esc(color || '#0a0a0b'), initial: esc(initial || ''), page, collection: esc(collection), creator: esc(creator),
+    banner, css: assets.css, js: assets.js, search: assets.search,
+  });
 }
+// The wide banner on collection and creator pages.
+const bannerHtml = (cover, title, sub) =>
+  `<header class="banner" style="--c:${esc(cover.color)}"><img src="/${esc(cover.t)}-1440.webp" alt=""><div class="banner-text"><h1>${esc(title)}</h1><span class="mono">${sub}</span></div></header>`;
 
 const assets = {};
 
 // ---------- main ----------
 
 await rm(OUT, { recursive: true, force: true });
-for (const d of ['t', 'p', 'og', 'a', 'w', 'c']) await mkdir(path.join(OUT, d), { recursive: true });
+for (const d of ['t', 'p', 'og', 'a', 'w', 'c', 'by']) await mkdir(path.join(OUT, d), { recursive: true });
 
 const readJson = (f, fallback) => loadJson(path.join(ROOT, f), fallback);
 // [{ hash, ext, name, collection?, size, added, credit? }]
@@ -266,12 +261,10 @@ const items = (await pool(list, concurrency, async (e) => {
 
 const now = Date.now();
 items.sort((a, b) => b.added - a.added || a.name.localeCompare(b.name, 'en', { numeric: true }));
-// "new" = recent, but never the first batch: when everything is new, nothing is.
-const firstBatch = items.reduce((m, i) => Math.min(m, i.added), Infinity) + 864e5;
-for (const it of items) it.new = now - it.added < NEW_DAYS * 864e5 && it.added > firstBatch;
+markNew(items, now, { days: NEW_DAYS, max: NEW_MAX });
 
-// Collections with at least one wallpaper, in collections.json order; cover defaults to the newest member.
-const collections = collectionList.map((c) => {
+// Collections with at least one wallpaper, most recently updated first; cover defaults to the newest member.
+const collections = orderCollections(collectionList, items).map((c) => {
   const members = items.filter((i) => i.coll === c.id);
   const cover = members.find((i) => i.hash === c.cover) || members[0];
   return members.length ? { id: c.id, name: c.name, count: members.length, cover: cover.hash } : null;
@@ -287,7 +280,12 @@ const aliases = collectAliases({ legacy: await readJson('legacy-ids.json'), prev
 const liveSlugs = new Map(items.map((i) => [i.hash, i.id]));
 await writeFile(path.join(OUT, '_redirects'), redirectsFile(redirectsFor(aliases, liveSlugs)));
 
-const manifest = { name: SITE_NAME, generated: now, pipeline: PIPELINE, widths: THUMB_WIDTHS, collections, colors, items, aliases };
+// Creators: everyone credited on at least one wallpaper.
+const creators = creatorsOf(items);
+const creatorId = new Map(creators.map((c) => [c.name, c.id]));
+for (const it of items) if (it.credit?.name) it.by = creatorId.get(it.credit.name);
+
+const manifest = { name: SITE_NAME, generated: now, pipeline: PIPELINE, widths: THUMB_WIDTHS, collections, creators, colors, items, aliases };
 const manifestJson = JSON.stringify(manifest);
 const mHash = hashOf(manifestJson);
 await writeFile(path.join(OUT, `a/manifest.${mHash}.json`), manifestJson);
@@ -302,6 +300,8 @@ for (const [key, file] of [['css', 'styles.css'], ['js', 'app.js'], ['search', '
   assets[key] = name;
 }
 await copyFile(path.join(SRC, 'favicon.svg'), path.join(OUT, 'favicon.svg'));
+await mkdir(path.join(OUT, 'fonts'), { recursive: true });
+for (const f of await readdir(path.join(SRC, 'fonts'))) await copyFile(path.join(SRC, 'fonts', f), path.join(OUT, 'fonts', f));
 await copyFile(path.join(SRC, '_headers'), path.join(OUT, '_headers'));
 await mkdir(path.join(OUT, 'admin'), { recursive: true });
 for (const f of await readdir(path.join(SRC, 'admin'))) await copyFile(path.join(SRC, 'admin', f), path.join(OUT, 'admin', f));
@@ -327,7 +327,20 @@ for (const c of collections) {
     title: `${c.name} — ${SITE_NAME}`,
     description: `${c.name}: ${count} from ${SITE_NAME}. Free to download.`,
     url: `${SITE_URL}c/${c.id}/`, image: SITE_URL + cover.og, color: cover.color,
-    banner: `<header class="banner" style="--c:${esc(cover.color)}"><img src="/${esc(cover.t)}-1440.webp" alt=""><div class="banner-text"><h1>${esc(c.name)}</h1><span class="mono">${count}</span></div></header>`,
+    banner: bannerHtml(cover, c.name, count),
+  }));
+}
+for (const c of creators) {
+  const cover = byHash.get(c.cover);
+  const count = `${c.count} wallpaper${c.count === 1 ? '' : 's'}`;
+  const link = c.link ? ` · <a href="${esc(c.link)}" target="_blank" rel="noopener nofollow">${esc(new URL(c.link).host)} ↗</a>` : '';
+  await mkdir(path.join(OUT, 'by', c.id), { recursive: true });
+  await writeFile(path.join(OUT, 'by', c.id, 'index.html'), renderPage(tpl, {
+    page: 'creator', creator: c.id,
+    title: `${c.name} — ${SITE_NAME}`,
+    description: `${count} by ${c.name} on ${SITE_NAME}. Free to download.`,
+    url: `${SITE_URL}by/${c.id}/`, image: SITE_URL + cover.og, color: cover.color,
+    banner: bannerHtml(cover, c.name, `by ${esc(c.name)} · ${count}${link}`),
   }));
 }
 
@@ -350,6 +363,7 @@ await writeFile(path.join(OUT, 'sitemap.xml'), `<?xml version="1.0" encoding="UT
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>${SITE_URL}</loc><lastmod>${day(now)}</lastmod></url>
 ${collections.map((c) => `  <url><loc>${SITE_URL}c/${c.id}/</loc><lastmod>${day(now)}</lastmod></url>`).join('\n')}
+${creators.map((c) => `  <url><loc>${SITE_URL}by/${c.id}/</loc><lastmod>${day(now)}</lastmod></url>`).join('\n')}
 ${items.map((it) => `  <url><loc>${SITE_URL}w/${it.id}/</loc><lastmod>${day(it.added)}</lastmod></url>`).join('\n')}
 </urlset>
 `);

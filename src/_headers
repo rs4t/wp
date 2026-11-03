@@ -15,3 +15,5 @@
   X-Frame-Options: DENY
 /manifest.json
   Cache-Control: no-cache
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable

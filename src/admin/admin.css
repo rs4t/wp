@@ -1,3 +1,9 @@
+/* Fonts are self-hosted (latin subset): no request to Google. */
+@font-face { font-family: 'Geist'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/geist.woff2) format('woff2'); }
+@font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/geist-mono.woff2) format('woff2'); }
+@font-face { font-family: 'Instrument Serif'; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/instrument-serif.woff2) format('woff2'); }
+@font-face { font-family: 'Instrument Serif'; font-style: italic; font-weight: 400; font-display: swap; src: url(/fonts/instrument-serif-italic.woff2) format('woff2'); }
+
 :root {
   --bg: #0a0a0b; --bg-2: #121214; --bg-3: #18181b;
   --fg: #ecebe8; --mute: #8b8a86; --dim: #55544f;
@@ -174,7 +180,6 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.35); }
 .coll .c-name { flex: 1 1 160px; height: 36px; }
 .coll .c-cover { flex: 1 1 200px; width: auto; height: 36px; font-size: 13px; }
 .coll .mono { width: 34px; text-align: right; }
-.coll .btn { width: 36px; padding: 0; justify-content: center; }
 @media (max-width: 560px) {
   .coll { flex-wrap: wrap; }
   .dock.edit input, .dock.edit select { flex: 1 1 100%; max-width: none; }
