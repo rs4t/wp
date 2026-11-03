@@ -2,3 +2,7 @@ node_modules/
 dist/
 .wrangler/
 .DS_Store
+
+# Local inbox of wallpapers waiting to be added, and brainstorm mockups
+/wallpapers/
+.superpowers/
