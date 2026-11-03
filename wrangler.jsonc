@@ -10,8 +10,8 @@
     "binding": "ASSETS",
     "not_found_handling": "404-page",
     "html_handling": "auto-trailing-slash",
-    // /wp paths (old address, redirected) and the API need the Worker; everything else is plain assets.
-    "run_worker_first": ["/wp", "/wp/*", "/api/*"]
+    // /wp paths (old address, redirected), original downloads (R2) and the API need the Worker; everything else is plain assets.
+    "run_worker_first": ["/wp", "/wp/*", "/o/*", "/api/*"]
   },
   "routes": [
     { "pattern": "wp.egorz.com", "custom_domain": true },
@@ -24,7 +24,8 @@
   // Secrets TURNSTILE_SITEKEY and TURNSTILE_SECRET switch submitting on.
   "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "Stats" }, { "name": "INBOX", "class_name": "Inbox" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Stats"] }, { "tag": "v2", "new_sqlite_classes": ["Inbox"] }],
-  "r2_buckets": [{ "binding": "SUBMISSIONS", "bucket_name": "wp-submissions" }],
+  // Original wallpaper and setup files (orig/<hash>), listed in wallpapers.json and community/setups.json.
+  "r2_buckets": [{ "binding": "SUBMISSIONS", "bucket_name": "wp-submissions" }, { "binding": "WALLS", "bucket_name": "wp-wallpapers" }],
   // Admin uploads commit here. Secrets ADMIN_PASSWORD and GITHUB_TOKEN are set in the dashboard.
   // Admin login: at most 5 password tries per IP per minute.
   "ratelimits": [{ "name": "LOGIN_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],

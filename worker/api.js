@@ -1,7 +1,7 @@
 import { handleInbox } from './inbox.js';
 
-// Admin API: password login, list wallpapers, stream uploads to GitHub, and
-// commit adds / moves / deletes as a single commit (one commit = one rebuild).
+// Admin API: password login, list wallpapers, stream uploads to R2, and
+// commit adds / moves / deletes to wallpapers.json as one commit (one commit = one rebuild).
 //
 // Secrets (Cloudflare dashboard → Worker → Settings → Variables and Secrets):
 //   ADMIN_PASSWORD  shared admin password
@@ -82,17 +82,10 @@ async function headCommit(env) {
   return { sha: ref.object.sha, tree: commit.tree.sha };
 }
 
-function wallpapersIn(tree) {
-  return tree
-    .filter((e) => e.type === 'blob' && e.path.startsWith(ROOT_DIR + '/') && IMAGE_EXT.has(ext(e.path)))
-    .map((e) => {
-      const rel = e.path.slice(ROOT_DIR.length + 1).split('/');
-      return { path: e.path, sha: e.sha, size: e.size, category: rel.length > 1 ? rel[0] : '', name: rel[rel.length - 1] };
-    });
-}
-
-async function listWallpapers(env, treeSha) {
-  return wallpapersIn((await ghJson(env, `/git/trees/${treeSha}?recursive=1`)).tree);
+// "wallpapers/<category>/<name>.<ext>" → its parts.
+function splitPath(p) {
+  const rel = p.slice(ROOT_DIR.length + 1).split('/');
+  return { category: rel.length > 1 ? rel[0] : '', name: rel[rel.length - 1] };
 }
 
 // ---------- validation ----------
@@ -131,36 +124,22 @@ async function login(request, env) {
   return fail(401, 'Wrong password');
 }
 
-// Body is raw base64 text; wrap it into GitHub's blob JSON while streaming,
-// so large wallpapers never have to fit in Worker memory.
-async function uploadBlob(request, env) {
+// The raw file streams straight into R2 as orig/<hash>. R2 checks the SHA-1 the
+// browser computed, so the hash (= the site's wallpaper id) is guaranteed right.
+async function uploadOriginal(request, env, url) {
+  const sha1 = url.searchParams.get('sha1') || '';
+  if (!/^[0-9a-f]{40}$/.test(sha1)) return fail(400, 'Bad checksum');
   const len = Number(request.headers.get('Content-Length'));
   if (!len || !request.body) return fail(411, 'Missing Content-Length');
-  if (len > Math.ceil(MAX_UPLOAD / 3) * 4 + 8) return fail(413, `File too large (max ${MAX_UPLOAD / 1048576} MB)`);
-
-  const head = enc.encode('{"encoding":"base64","content":"');
-  const tail = enc.encode('"}');
-  const { readable, writable } = new FixedLengthStream(head.length + len + tail.length);
-  // Native pipe: the bytes never pass through JS, so this costs almost no CPU time.
-  const pump = (async () => {
-    let w = writable.getWriter();
-    await w.write(head);
-    w.releaseLock();
-    await request.body.pipeTo(writable, { preventClose: true });
-    w = writable.getWriter();
-    await w.write(tail);
-    await w.close();
-  })();
-  const [res] = await Promise.all([
-    gh(env, '/git/blobs', { method: 'POST', body: readable, headers: { 'Content-Type': 'application/json' } }),
-    pump,
-  ]);
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) return fail(502, body.message || `GitHub ${res.status}`);
-  return json({ sha: body.sha });
+  if (len > MAX_UPLOAD) return fail(413, `File too large (max ${MAX_UPLOAD / 1048576} MB)`);
+  const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
+  try { await env.WALLS.put(`orig/${sha1.slice(0, 10)}`, request.body, { sha1, httpMetadata: { contentType } }); }
+  catch { return fail(400, 'The upload arrived damaged — please try again'); }
+  return json({ hash: sha1.slice(0, 10) });
 }
 
-const CREDITS = `${ROOT_DIR}/credits.json`;
+// [{ path: "wallpapers/<category>/<name>.<ext>", hash, size, added, credit? }]
+const LIST = 'wallpapers.json';
 const SETUPS = 'community/setups.json';
 
 async function readJsonFile(env, tree, path, fallback) {
@@ -203,62 +182,57 @@ async function commit(request, env) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const head = await headCommit(env);
     const fullTree = (await ghJson(env, `/git/trees/${head.tree}?recursive=1`)).tree;
-    const existing = wallpapersIn(fullTree);
-    const byPath = new Map(existing.map((e) => [e.path, e]));
-    const taken = new Set(existing.map((e) => e.path.toLowerCase()));
+    const walls = await readJsonFile(env, fullTree, LIST, []);
+    const byPath = new Map(walls.map((w) => [w.path, w]));
+    const taken = new Set(walls.map((w) => w.path.toLowerCase()));
     const tree = [];
     const added = [];
-    const needCredits = add.length || del.length || move.length || credit.length;
-    const credits = needCredits ? await readJsonFile(env, fullTree, CREDITS, {}) : null;
     const setupList = setups.length || unsetup.length ? await readJsonFile(env, fullTree, SETUPS, []) : null;
-    let creditsChanged = false;
+    // Originals stay in R2 when a wallpaper is deleted, so reverting the commit brings it back.
+    const gone = new Set(del.map((p) => byPath.get(p)));
+    let changed = del.length > 0;
+    const uploaded = async (hash) => /^[0-9a-f]{10}$/.test(hash || '') && (await env.WALLS.head(`orig/${hash}`));
 
     for (const p of [...del, ...move.map((m) => m.from), ...credit.map((c) => c.path)]) {
       if (!byPath.has(p)) return fail(400, `Not found: ${p}`);
     }
-    for (const p of del) {
-      tree.push({ path: p, mode: '100644', type: 'blob', sha: null });
-      taken.delete(p.toLowerCase());
-      if (credits[p]) { delete credits[p]; creditsChanged = true; }
-    }
+    for (const p of del) taken.delete(p.toLowerCase());
     for (const m of move) {
-      const from = byPath.get(m.from);
+      const w = byPath.get(m.from);
+      const from = splitPath(w.path);
       const category = m.category === undefined ? from.category : cleanCategory(m.category);
       const oldStem = from.name.replace(/\.[^.]+$/, '');
       const stem = m.name === undefined ? oldStem : cleanName(m.name);
       if (!stem) return fail(400, 'Every wallpaper needs a name');
       if (from.category === category && stem === oldStem) continue;
-      taken.delete(from.path.toLowerCase());
-      const to = uniquePath(category, stem, ext(from.path), taken);
-      tree.push({ path: from.path, mode: '100644', type: 'blob', sha: null });
-      tree.push({ path: to, mode: '100644', type: 'blob', sha: from.sha });
-      if (credits[from.path]) { credits[to] = credits[from.path]; delete credits[from.path]; creditsChanged = true; }
+      taken.delete(w.path.toLowerCase());
+      w.path = uniquePath(category, stem, ext(w.path), taken);
+      changed = true;
     }
     for (const a of add) {
       const extension = ext(`x.${a.ext || ''}`);
       const name = cleanName(a.name);
-      if (!/^[0-9a-f]{40}$/.test(a.sha || '')) return fail(400, 'Bad upload reference');
+      const obj = await uploaded(a.hash);
+      if (!obj) return fail(400, 'Upload not found — please upload again');
       if (!IMAGE_EXT.has(extension)) return fail(400, `Unsupported file type: .${a.ext}`);
       if (!name) return fail(400, 'Every wallpaper needs a name');
       const p = uniquePath(cleanCategory(a.category), name, extension, taken);
-      tree.push({ path: p, mode: '100644', type: 'blob', sha: a.sha });
-      added.push(p);
       const c = cleanCredit(a.credit);
-      if (c) { credits[p] = c; creditsChanged = true; }
+      walls.push({ path: p, hash: a.hash, size: obj.size, added: Date.now(), ...(c ? { credit: c } : {}) });
+      added.push(p);
+      changed = true;
     }
     for (const c of credit) {
-      const v = cleanCredit(c);
-      if (v) credits[c.path] = v; else delete credits[c.path];
-      creditsChanged = true;
+      const w = byPath.get(c.path), v = cleanCredit(c);
+      if (v) w.credit = v; else delete w.credit;
+      changed = true;
     }
     for (const st of setups) {
-      if (!/^[0-9a-f]{40}$/.test(st.sha || '')) return fail(400, 'Bad upload reference');
+      if (!(await uploaded(st.hash))) return fail(400, 'Upload not found — please upload again');
       const id = crypto.randomUUID().replace(/-/g, '').slice(0, 10);
-      const image = `community/setups/${id}.jpg`;
-      tree.push({ path: image, mode: '100644', type: 'blob', sha: st.sha });
       const who = cleanCredit({ name: st.name, link: st.link }) || { name: 'anonymous' };
       setupList.push({
-        id, image, ...who,
+        id, hash: st.hash, ...who,
         caption: String(st.caption || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 200),
         wallpapers: (Array.isArray(st.wallpapers) ? st.wallpapers : []).filter((h) => /^[0-9a-f]{10}$/.test(h)).slice(0, 5),
         added: Date.now(),
@@ -267,10 +241,9 @@ async function commit(request, env) {
     for (const id of unsetup) {
       const i = setupList.findIndex((x) => x.id === id);
       if (i < 0) return fail(400, `Setup not found: ${id}`);
-      tree.push({ path: setupList[i].image, mode: '100644', type: 'blob', sha: null });
       setupList.splice(i, 1);
     }
-    if (creditsChanged) tree.push({ path: CREDITS, mode: '100644', type: 'blob', sha: await jsonBlob(env, credits) });
+    if (changed) tree.push({ path: LIST, mode: '100644', type: 'blob', sha: await jsonBlob(env, walls.filter((w) => !gone.has(w))) });
     if (setupList && (setups.length || unsetup.length)) tree.push({ path: SETUPS, mode: '100644', type: 'blob', sha: await jsonBlob(env, setupList) });
     if (!tree.length) return json({ ok: true, noop: true });
 
@@ -311,10 +284,11 @@ export async function handleApi(request, env, pathname) {
     if (route === 'GET /api/session') return json({ ok: true, repo: env.GITHUB_REPO, branch: env.GITHUB_BRANCH });
     if (route === 'GET /api/list') {
       const head = await headCommit(env);
-      const files = await listWallpapers(env, head.tree);
+      const tree = (await ghJson(env, `/git/trees/${head.tree}`)).tree;
+      const files = (await readJsonFile(env, tree, LIST, [])).map((w) => ({ path: w.path, hash: w.hash, size: w.size, ...splitPath(w.path) }));
       return json({ head: head.sha, files });
     }
-    if (route === 'POST /api/blob') return await uploadBlob(request, env);
+    if (route === 'PUT /api/upload') return await uploadOriginal(request, env, new URL(request.url));
     if (route === 'POST /api/commit') return await commit(request, env);
     if (pathname.startsWith('/api/inbox')) return (await handleInbox(request, env, pathname)) || fail(404, 'Not found');
     return fail(404, 'Not found');

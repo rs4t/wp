@@ -20,7 +20,7 @@ A quiet, dark gallery for my wallpaper collection. Browse, preview, and download
 
 ## How it works
 
-The wallpapers live in [`wallpapers/`](wallpapers), one folder per category. On every push, a small Node build script uses [sharp](https://sharp.pixelplumbing.com) to generate thumbnails, previews, color tags and link-preview images, and writes a static site to `dist/`. Images that haven't changed are reused from the previous deploy, so a new upload only processes what's new. Cloudflare Workers serves the result.
+The original files live in a Cloudflare R2 bucket; [`wallpapers.json`](wallpapers.json) lists them (path, content hash, date, credit), and the admin page at `/admin/` uploads files and edits that list. On every push, a small Node build script uses [sharp](https://sharp.pixelplumbing.com) to generate thumbnails, previews, color tags and link-preview images, and writes a static site to `dist/`. Images that haven't changed are reused from the previous deploy, so a new upload only processes what's new. Cloudflare Workers serves the result, and streams original downloads from R2.
 
 No framework, just plain HTML, CSS and JavaScript.
 

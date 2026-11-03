@@ -10,6 +10,8 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 
 
 http.createServer(async (req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  // Originals live in R2 behind the live Worker.
+  if (p.startsWith('/o/')) { res.writeHead(302, { Location: 'https://wp.egorz.com' + req.url }); return res.end(); }
   let file = path.join(DIST, p);
   if (!file.startsWith(DIST)) { res.writeHead(403); return res.end(); }
   try {

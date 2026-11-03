@@ -1,5 +1,5 @@
-// Admin: upload / move / delete wallpapers. Every save is one commit to the
-// repo; Cloudflare rebuilds the site from it.
+// Admin: upload / move / delete wallpapers. Files go to R2; every save is one
+// commit to wallpapers.json in the repo, and Cloudflare rebuilds the site from it.
 (() => {
   'use strict';
   const $ = (s) => document.querySelector(s);
@@ -294,32 +294,29 @@
   });
   $('#clearQueue').addEventListener('click', () => { state.queue.forEach((q) => URL.revokeObjectURL(q.url)); state.queue = []; renderQueue(); });
 
-  function toBase64(file) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result.slice(r.result.indexOf(',') + 1));
-      r.onerror = () => reject(new Error('Could not read file'));
-      r.readAsDataURL(file);
-    });
-  }
+  const TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', avif: 'image/avif', tif: 'image/tiff', tiff: 'image/tiff' };
+  const sha1Of = async (blob) => [...new Uint8Array(await crypto.subtle.digest('SHA-1', await blob.arrayBuffer()))]
+    .map((b) => b.toString(16).padStart(2, '0')).join('');
 
-  function uploadBlob(q) {
-    return toBase64(q.file).then((b64) => new Promise((resolve, reject) => {
+  // Streams the file into R2; resolves to its hash (the site's id for the file).
+  async function putOriginal(blob, ext, onProgress) {
+    const sha1 = await sha1Of(blob);
+    return new Promise((resolve, reject) => {
       const x = new XMLHttpRequest();
-      x.open('POST', API + 'blob');
+      x.open('PUT', API + 'upload?sha1=' + sha1);
       x.setRequestHeader('X-WP-Admin', '1');
-      x.setRequestHeader('Content-Type', 'text/plain');
-      x.upload.onprogress = (e) => { if (e.lengthComputable) setProgress(q, Math.round((e.loaded / e.total) * 95)); };
+      x.setRequestHeader('Content-Type', blob.type || TYPES[ext] || 'application/octet-stream');
+      if (onProgress) x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 95)); };
       x.onload = () => {
         let data = {};
         try { data = JSON.parse(x.responseText); } catch {}
         if (x.status === 401) { showLogin(); reject(new Error('Logged out')); }
-        else if (x.status >= 200 && x.status < 300 && data.sha) resolve(data.sha);
+        else if (x.status >= 200 && x.status < 300 && data.hash) resolve(data.hash);
         else reject(new Error(data.error || `Upload failed (${x.status})`));
       };
       x.onerror = () => reject(new Error('Network error'));
-      x.send(b64);
-    }));
+      x.send(blob);
+    });
   }
   function setProgress(q, p) {
     q.progress = p;
@@ -336,10 +333,10 @@
     const cat = state.upCat;
     // Upload one at a time (steady progress, gentle on mobile data), then one commit.
     for (const q of state.queue) {
-      if (q.sha) continue;
+      if (q.hash) continue;
       q.error = null; q.status = 'uploading';
       try {
-        q.sha = await uploadBlob(q);
+        q.hash = await putOriginal(q.file, q.ext, (p) => setProgress(q, p));
         q.status = 'done'; setProgress(q, 100);
       } catch (err) {
         q.status = 'failed'; q.error = err.message;
@@ -347,11 +344,11 @@
       }
       renderQueue();
     }
-    const ok = state.queue.filter((q) => q.sha);
-    const failed = state.queue.filter((q) => !q.sha);
+    const ok = state.queue.filter((q) => q.hash);
+    const failed = state.queue.filter((q) => !q.hash);
     if (ok.length) {
       try {
-        await api('commit', { method: 'POST', body: JSON.stringify({ add: ok.map((q) => ({ sha: q.sha, name: q.name.trim(), ext: q.ext, category: cat })) }) });
+        await api('commit', { method: 'POST', body: JSON.stringify({ add: ok.map((q) => ({ hash: q.hash, name: q.name.trim(), ext: q.ext, category: cat })) }) });
         ok.forEach((q) => URL.revokeObjectURL(q.url));
         state.queue = failed;
         state.newCat = false;
@@ -382,14 +379,7 @@
   });
 
   // ---------- uploads from a Blob (inbox approvals, own setups) ----------
-  async function blobSha(blob) {
-    const b64 = await toBase64(blob);
-    const res = await fetch(API + 'blob', { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Admin': '1', 'Content-Type': 'text/plain' }, body: b64 });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.sha) throw new Error(data.error || `Upload failed (${res.status})`);
-    return data.sha;
-  }
-  // Setup photos don't need full resolution: 2560px JPEG is plenty and keeps the repo small.
+  // Setup photos don't need full resolution: 2560px JPEG is plenty.
   async function shrinkForSetup(blob) {
     const bmp = await createImageBitmap(blob);
     const k = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
@@ -490,9 +480,9 @@
         let blob = await res.blob();
         if (s.type === 'setup') {
           blob = await shrinkForSetup(blob);
-          body.setups.push({ sha: await blobSha(blob), ...credit, caption: li.querySelector('.c-caption')?.value.trim() || '', wallpapers: s.data.wallpapers || [] });
+          body.setups.push({ hash: await putOriginal(blob, 'jpg'), ...credit, caption: li.querySelector('.c-caption')?.value.trim() || '', wallpapers: s.data.wallpapers || [] });
         } else {
-          body.add.push({ sha: await blobSha(blob), name: x.querySelector('.f-name').value.trim(), ext: extOf(f.key), category: x.querySelector('.f-cat').value, credit });
+          body.add.push({ hash: await putOriginal(blob, extOf(f.key)), name: x.querySelector('.f-name').value.trim(), ext: extOf(f.key), category: x.querySelector('.f-cat').value, credit });
         }
       }
       await api('commit', { method: 'POST', body: JSON.stringify(body) });
@@ -535,7 +525,7 @@
     try {
       const wallpapers = [...$('#ownWalls').selectedOptions].map((o) => o.value).slice(0, 5);
       const setups = [];
-      for (const f of files) setups.push({ sha: await blobSha(await shrinkForSetup(f)), name: $('#ownName').value.trim() || 'egor', link: $('#ownLink').value.trim(), caption: $('#ownCaption').value.trim(), wallpapers });
+      for (const f of files) setups.push({ hash: await putOriginal(await shrinkForSetup(f), 'jpg'), name: $('#ownName').value.trim() || 'egor', link: $('#ownLink').value.trim(), caption: $('#ownCaption').value.trim(), wallpapers });
       state.busy = false;
       await save({ setups }, `Published ${setups.length} setup${setups.length === 1 ? '' : 's'}`);
       e.target.reset(); $('#ownName').value = 'egor';

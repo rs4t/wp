@@ -1,9 +1,9 @@
-// Scans wallpapers/, generates thumbnails / previews / OG images with sharp,
-// writes a manifest, and renders index + one permalink page per wallpaper into dist/.
-// Nothing here needs editing when wallpapers are added: drop files, push.
+// Reads wallpapers.json (originals live in R2, served by the Worker at /o/<hash>/),
+// generates thumbnails / previews / OG images with sharp, writes a manifest, and
+// renders index + one permalink page per wallpaper into dist/.
+// The admin page edits wallpapers.json; nothing here needs editing.
 
-import { readdir, stat, mkdir, readFile, writeFile, copyFile, rm } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { readdir, mkdir, readFile, writeFile, copyFile, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -12,17 +12,14 @@ import sharp from 'sharp';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
-const WALLS = process.env.WALLPAPERS_DIR ? path.resolve(process.env.WALLPAPERS_DIR) : path.join(ROOT, 'wallpapers');
 const OUT = path.join(ROOT, 'dist');
-const COMMUNITY = process.env.COMMUNITY_DIR ? path.resolve(process.env.COMMUNITY_DIR) : path.join(ROOT, 'community');
+const COMMUNITY = path.join(ROOT, 'community');
 
 const SITE_URL = (process.env.SITE_URL || 'https://wp.egorz.com').replace(/\/+$/, '') + '/';
 const SITE_NAME = "egor's wallpapers";
-const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.tif', '.tiff']);
 const NEW_DAYS = 14;
 const THUMB_WIDTHS = [480, 960, 1440];
 const PREVIEW_EDGE = 2880;
-const MAX_ASSET_BYTES = 24.5 * 1024 * 1024; // Cloudflare's per-file limit is 25 MiB
 // Bump when image outputs or analysis change: forces a full reprocess instead of
 // reusing the previous deploy's files.
 const PIPELINE = 2;
@@ -54,41 +51,6 @@ function ratioLabel(w, h) {
   const r = w / h;
   for (const [a, b] of RATIOS) if (Math.abs(r - a / b) / (a / b) < 0.012) return `${a}:${b}`;
   return r >= 1 ? `${r.toFixed(2)}:1` : `1:${(1 / r).toFixed(2)}`;
-}
-
-async function walk(dir) {
-  const out = [];
-  let entries = [];
-  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return out; }
-  for (const e of entries) {
-    if (e.name.startsWith('.')) continue;
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) out.push(...(await walk(p)));
-    else if (IMAGE_EXT.has(path.extname(e.name).toLowerCase())) out.push(p);
-  }
-  return out;
-}
-
-// When each file was first added, from git history. Cloudflare clones shallowly,
-// so deepen the clone first; fall back to file mtime for anything git doesn't know.
-function gitAddedDates({ deepen }) {
-  const map = new Map();
-  const git = (args, opts = {}) => execFileSync('git', ['-c', 'core.quotepath=off', ...args], { cwd: ROOT, maxBuffer: 64 << 20, ...opts }).toString();
-  try {
-    if (deepen && git(['rev-parse', '--is-shallow-repository']).trim() === 'true') {
-      log('shallow clone detected, fetching full history for dates…');
-      try { git(['fetch', '--unshallow', '--quiet'], { stdio: 'ignore', timeout: 120000 }); }
-      catch { log('warning: could not unshallow; some dates may fall back to file time'); }
-    }
-    const out = git(['log', '--no-renames', '--diff-filter=A', '--format=@%ct', '--name-only', '--', 'wallpapers']);
-    let ts = 0;
-    for (const line of out.split('\n')) {
-      if (!line) continue;
-      if (line.startsWith('@')) { ts = Number(line.slice(1)) * 1000; continue; }
-      if (!map.has(line)) map.set(line, ts); // newest-first log: keep the latest add
-    }
-  } catch { log('warning: git history unavailable; using file times'); }
-  return map;
 }
 
 async function pool(items, limit, fn) {
@@ -138,7 +100,7 @@ function colorFamilies(px) {
 
 // ---------- image processing ----------
 
-async function processImage(buf, hash, file, slug, downloadStem) {
+async function processImage(buf, hash, ext, slug, downloadStem) {
   const input = sharp(buf, { failOn: 'none', limitInputPixels: false });
   const meta = await input.metadata();
   let { width, height } = meta;
@@ -177,34 +139,8 @@ async function processImage(buf, hash, file, slug, downloadStem) {
   const palette = [0, 2, 6, 8, 4].map((i) => hex(px(i)));
   const dom = st.dominant ? hex([st.dominant.r, st.dominant.g, st.dominant.b]) : palette[4];
 
-  // Original download: served untouched unless it breaks the host's size limit.
-  const fname = downloadStem + path.extname(file).toLowerCase();
-  let orig = `o/${hash}/${fname}`;
-  let size = buf.length;
-  await mkdir(path.join(OUT, 'o', hash), { recursive: true });
-  if (buf.length <= MAX_ASSET_BYTES) {
-    await copyFile(file, path.join(OUT, orig));
-  } else {
-    const jpgName = fname.replace(/\.[^.]+$/, '') + '.jpg';
-    orig = `o/${hash}/${jpgName}`;
-    let q = 95, out;
-    do {
-      out = await sharp(buf, { limitInputPixels: false }).rotate().jpeg({ quality: q, mozjpeg: true, chromaSubsampling: '4:4:4' }).toBuffer();
-      q -= 4;
-    } while (out.length > MAX_ASSET_BYTES && q > 70);
-    // Still too big at q70 (gigantic images): shrink until it fits the host limit.
-    for (let scale = 0.9; out.length > MAX_ASSET_BYTES && scale > 0.3; scale -= 0.1) {
-      out = await sharp(buf, { limitInputPixels: false }).rotate()
-        .resize({ width: Math.round(width * scale), withoutEnlargement: true })
-        .jpeg({ quality: 90, mozjpeg: true }).toBuffer();
-    }
-    await writeFile(path.join(OUT, orig), out);
-    size = out.length;
-    log(`note: ${fname} is ${(buf.length / 1048576).toFixed(1)} MB (over 25 MB) — download re-encoded to JPEG q${q + 4}`);
-  }
-
   return {
-    w: width, h: height, hash, tBase, preview, og, orig, size,
+    w: width, h: height, hash, tBase, preview, og, orig: `o/${hash}/${downloadStem}.${ext}`, size: buf.length,
     color: dom, palette, colors: colorFamilies(samplePx),
     lqip: `data:image/webp;base64,${lqipData.toString('base64')}`,
   };
@@ -235,7 +171,7 @@ async function loadPrevious() {
   }
 }
 
-async function reuseImage(buf, hash, file, slug, downloadStem, old) {
+async function reuseImage(hash, ext, slug, downloadStem, old) {
   const tBase = `t/${slug}.${hash}`, preview = `p/${slug}.${hash}.webp`, og = `og/${slug}.${hash}.jpg`;
   const jobs = [];
   for (const w of THUMB_WIDTHS) for (const ext of ['avif', 'webp']) {
@@ -243,14 +179,10 @@ async function reuseImage(buf, hash, file, slug, downloadStem, old) {
   }
   jobs.push(fetchTo(CACHE_URL + old.p, path.join(OUT, preview)));
   jobs.push(fetchTo(CACHE_URL + old.og, path.join(OUT, og)));
-  await mkdir(path.join(OUT, 'o', hash), { recursive: true });
-  let orig = `o/${hash}/${downloadStem}${path.extname(file).toLowerCase()}`;
-  if (buf.length <= MAX_ASSET_BYTES) jobs.push(copyFile(file, path.join(OUT, orig)));
-  else { orig = `o/${hash}/${downloadStem}.jpg`; jobs.push(fetchTo(CACHE_URL + old.o, path.join(OUT, orig))); }
   await Promise.all(jobs);
   return {
-    w: old.w, h: old.h, hash, tBase, preview, og, orig, size: buf.length <= MAX_ASSET_BYTES ? buf.length : old.size,
-    color: old.color, palette: old.pal, colors: old.colors, lqip: old.lqip, added: old.added,
+    w: old.w, h: old.h, hash, tBase, preview, og, orig: `o/${hash}/${downloadStem}.${ext}`, size: old.size,
+    color: old.color, palette: old.pal, colors: old.colors, lqip: old.lqip,
   };
 }
 
@@ -276,55 +208,52 @@ const assets = {};
 // ---------- main ----------
 
 await rm(OUT, { recursive: true, force: true });
-for (const d of ['t', 'p', 'og', 'o', 'a', 'w']) await mkdir(path.join(OUT, d), { recursive: true });
+for (const d of ['t', 'p', 'og', 'a', 'w']) await mkdir(path.join(OUT, d), { recursive: true });
 
-const files = (await walk(WALLS)).sort();
+// [{ path: "wallpapers/<category>/<name>.<ext>", hash, size, added, credit? }]
+const list = JSON.parse(await readFile(path.join(ROOT, 'wallpapers.json'), 'utf8'));
 const previous = await loadPrevious();
-// Reused wallpapers keep their dates from the previous deploy, so the (slow)
-// full git history is only needed when there is nothing to reuse.
-const dates = gitAddedDates({ deepen: previous.size === 0 });
-log(`found ${files.length} wallpaper${files.length === 1 ? '' : 's'}`);
+log(`found ${list.length} wallpaper${list.length === 1 ? '' : 's'}`);
 
 // Names repeat across categories (1.jpg, 2.jpg…), so the category is part of
 // every title, permalink slug and download filename.
 const used = new Set();
-const entries = files.map((abs) => {
-  const rel = path.relative(ROOT, abs).split(path.sep).join('/');
-  const parts = path.relative(WALLS, abs).split(path.sep);
+const entries = list.map((w) => {
+  const parts = w.path.split('/').slice(1);
   const category = parts.length > 1 ? parts[0] : null;
-  const stem = path.basename(abs, path.extname(abs));
+  const file = parts[parts.length - 1];
+  const ext = path.extname(file).slice(1).toLowerCase();
+  const stem = path.basename(file, path.extname(file));
   const base = slugify(category ? `${category}-${stem}` : stem);
   let slug = base;
   for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
   used.add(slug);
-  return { abs, rel, category, stem, slug };
+  return { ...w, category, stem, ext, slug };
 });
 
 const concurrency = Math.max(1, Math.min(3, (os.availableParallelism?.() ?? os.cpus().length) - 1));
 let done = 0, reused = 0;
-// Processed files for one image: reused from the previous deploy when possible.
-async function imageFor(abs, slug, downloadStem, label) {
+// Processed files for one image: reused from the previous deploy when possible,
+// otherwise the original is downloaded from R2 (through the live Worker) and processed.
+async function imageFor(hash, ext, slug, downloadStem, label) {
   try {
-    const buf = await readFile(abs);
-    const hash = hashOf(buf);
     const old = previous.get(hash);
     if (old) {
-      try { const r = await reuseImage(buf, hash, abs, slug, downloadStem, old); reused++; return r; }
+      try { const r = await reuseImage(hash, ext, slug, downloadStem, old); reused++; return r; }
       catch (err) { log(`note: could not reuse ${label} (${err.message}); processing it`); }
     }
-    return await processImage(buf, hash, abs, slug, downloadStem);
-  } catch (err) { log(`warning: skipping ${label} — not a readable image (${err.message})`); return null; }
+    const res = await fetch(`${SITE_URL}o/${hash}/original.${ext}`, { signal: AbortSignal.timeout(300000) });
+    if (!res.ok) throw new Error(`original: HTTP ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (hashOf(buf) !== hash) throw new Error('original does not match its hash');
+    return await processImage(buf, hash, ext, slug, downloadStem);
+  } catch (err) { log(`warning: skipping ${label} (${err.message})`); return null; }
 }
-
-// Credits for wallpapers sent in by other people: { "wallpapers/cat/name.jpg": { name, link } }.
-const credits = await readFile(path.join(WALLS, 'credits.json'), 'utf8').then(JSON.parse).catch(() => ({}));
 
 const items = (await pool(entries, concurrency, async (e) => {
   const downloadStem = e.category ? `${e.category}-${e.stem}` : e.stem;
-  const r = await imageFor(e.abs, e.slug, downloadStem, e.rel);
+  const r = await imageFor(e.hash, e.ext, e.slug, downloadStem, e.path);
   if (!r) return null;
-  const srcKey = 'wallpapers/' + path.relative(WALLS, e.abs).split(path.sep).join('/');
-  const added = r.added ?? dates.get(e.rel) ?? (await stat(e.abs)).mtimeMs;
   done++;
   if (done % 10 === 0 || done === entries.length) log(`processed ${done}/${entries.length}`);
   return {
@@ -334,8 +263,8 @@ const items = (await pool(entries, concurrency, async (e) => {
     cat: e.category,
     w: r.w, h: r.h,
     ratio: ratioLabel(r.w, r.h),
-    size: r.size,
-    added: Math.round(added),
+    size: e.size,
+    added: e.added,
     color: r.color,
     pal: r.palette,
     colors: r.colors,
@@ -346,8 +275,8 @@ const items = (await pool(entries, concurrency, async (e) => {
     og: r.og,
     o: r.orig,
     file: path.basename(r.orig),
-    src: srcKey,
-    ...(credits[srcKey]?.name ? { credit: { name: credits[srcKey].name, ...(credits[srcKey].link ? { link: credits[srcKey].link } : {}) } } : {}),
+    src: e.path,
+    ...(e.credit?.name ? { credit: e.credit } : {}),
   };
 })).filter(Boolean);
 
@@ -371,8 +300,7 @@ const colors = COLOR_ORDER.filter((c) => colorCounts.has(c)).map((id) => ({ id, 
 const setupList = await readFile(path.join(COMMUNITY, 'setups.json'), 'utf8').then(JSON.parse).catch(() => []);
 const idByHash = new Map(items.map((it) => [it.hash, it.id]));
 const setups = (await pool(setupList, concurrency, async (st) => {
-  const abs = path.join(COMMUNITY, 'setups', path.basename(st.image || ''));
-  const r = await imageFor(abs, `setup-${st.id}`, `setup-${st.id}`, `community setup ${st.id}`);
+  const r = await imageFor(st.hash, 'jpg', `setup-${st.id}`, `setup-${st.id}`, `community setup ${st.id}`);
   if (!r) return null;
   return {
     id: st.id, name: st.name, ...(st.link ? { link: st.link } : {}), caption: st.caption || '',
