@@ -1,7 +1,8 @@
-// Reads wallpapers.json (originals live in R2, served by the Worker at /o/<hash>/),
-// generates thumbnails / previews / OG images with sharp, writes a manifest, and
-// renders index + one permalink page per wallpaper into dist/.
-// The admin page edits wallpapers.json; nothing here needs editing.
+// Reads wallpapers.json + collections.json (originals live in R2, served by the
+// Worker at /o/<hash>/), generates thumbnails / previews / OG images with sharp,
+// writes a manifest, and renders the home page, one page per collection and per
+// wallpaper, plus _redirects for every old wallpaper link, into dist/.
+// The admin page edits the two JSON files; nothing here needs editing.
 
 import { readdir, mkdir, readFile, writeFile, copyFile, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -9,11 +10,11 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import sharp from 'sharp';
+import { assignSlugs, collectAliases, redirectsFor, redirectsFile } from './site.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
 const OUT = path.join(ROOT, 'dist');
-const COMMUNITY = path.join(ROOT, 'community');
 
 const SITE_URL = (process.env.SITE_URL || 'https://wp.egorz.com').replace(/\/+$/, '') + '/';
 const SITE_NAME = "egor's wallpapers";
@@ -32,10 +33,6 @@ const t0 = Date.now();
 const log = (...a) => console.log('[build]', ...a);
 
 // ---------- helpers ----------
-
-const slugify = (s) =>
-  s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    .replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wallpaper';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -156,18 +153,16 @@ async function fetchTo(url, dest) {
   await writeFile(dest, Buffer.from(await res.arrayBuffer()));
 }
 
+// The previous deploy's manifest: its images are reused and its slugs become redirects.
 async function loadPrevious() {
-  if (!CACHE_URL) return new Map();
+  if (!CACHE_URL) return null;
   try {
     const res = await fetch(CACHE_URL + 'manifest.json', { signal: AbortSignal.timeout(15000), cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const prev = await res.json();
-    if (prev.pipeline !== PIPELINE) { log(`previous deploy used pipeline ${prev.pipeline ?? 1}, reprocessing everything once`); return new Map(); }
-    log(`reusing processed images from ${CACHE_URL}`);
-    return new Map([...prev.items, ...(prev.setups || [])].filter((i) => i.hash).map((i) => [i.hash, i]));
+    return await res.json();
   } catch (err) {
     log(`no previous deploy to reuse (${err.message}); processing everything`);
-    return new Map();
+    return null;
   }
 }
 
@@ -188,9 +183,9 @@ async function reuseImage(hash, ext, slug, downloadStem, old) {
 
 // ---------- pages ----------
 
-function renderPage(tpl, { root, title, description, url, image, color, initial, page = 'gallery' }) {
+function renderPage(tpl, { title, description, url, image, color, initial, page = 'gallery', collection = '', banner = '' }) {
   return tpl
-    .replaceAll('{{root}}', root)
+    .replaceAll('{{root}}', '/')
     .replaceAll('{{title}}', esc(title))
     .replaceAll('{{description}}', esc(description))
     .replaceAll('{{url}}', esc(url))
@@ -198,6 +193,8 @@ function renderPage(tpl, { root, title, description, url, image, color, initial,
     .replaceAll('{{color}}', esc(color || '#0a0a0b'))
     .replaceAll('{{initial}}', esc(initial || ''))
     .replaceAll('{{page}}', page)
+    .replaceAll('{{collection}}', esc(collection))
+    .replaceAll('{{banner}}', banner)
     .replaceAll('{{css}}', assets.css)
     .replaceAll('{{js}}', assets.js)
     .replaceAll('{{submit}}', assets.submit);
@@ -208,59 +205,53 @@ const assets = {};
 // ---------- main ----------
 
 await rm(OUT, { recursive: true, force: true });
-for (const d of ['t', 'p', 'og', 'a', 'w']) await mkdir(path.join(OUT, d), { recursive: true });
+for (const d of ['t', 'p', 'og', 'a', 'w', 'c']) await mkdir(path.join(OUT, d), { recursive: true });
 
-// [{ path: "wallpapers/<category>/<name>.<ext>", hash, size, added, credit? }]
-const list = JSON.parse(await readFile(path.join(ROOT, 'wallpapers.json'), 'utf8'));
-const previous = await loadPrevious();
+const readJson = async (f, fallback) => readFile(path.join(ROOT, f), 'utf8').then(JSON.parse).catch(() => fallback);
+// [{ hash, ext, name, collection?, size, added, credit? }]
+const list = await readJson('wallpapers.json', []);
+// [{ id, name, cover? }] in display order
+const collectionList = await readJson('collections.json', []);
+const prev = await loadPrevious();
+const previous = new Map();
+if (prev?.pipeline === PIPELINE) {
+  for (const i of prev.items) if (i.hash) previous.set(i.hash, i);
+  log(`reusing processed images from ${CACHE_URL}`);
+} else if (prev) log(`previous deploy used pipeline ${prev.pipeline ?? 1}, reprocessing everything once`);
 log(`found ${list.length} wallpaper${list.length === 1 ? '' : 's'}`);
 
-// Names repeat across categories (1.jpg, 2.jpg…), so the category is part of
-// every title, permalink slug and download filename.
-const used = new Set();
-const entries = list.map((w) => {
-  const parts = w.path.split('/').slice(1);
-  const category = parts.length > 1 ? parts[0] : null;
-  const file = parts[parts.length - 1];
-  const ext = path.extname(file).slice(1).toLowerCase();
-  const stem = path.basename(file, path.extname(file));
-  const base = slugify(category ? `${category}-${stem}` : stem);
-  let slug = base;
-  for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
-  used.add(slug);
-  return { ...w, category, stem, ext, slug };
-});
+const slugByHash = assignSlugs(list);
+const collectionIds = new Set(collectionList.map((c) => c.id));
 
 const concurrency = Math.max(1, Math.min(3, (os.availableParallelism?.() ?? os.cpus().length) - 1));
 let done = 0, reused = 0;
 // Processed files for one image: reused from the previous deploy when possible,
 // otherwise the original is downloaded from R2 (through the live Worker) and processed.
-async function imageFor(hash, ext, slug, downloadStem, label) {
+async function imageFor(hash, ext, slug, label) {
   try {
     const old = previous.get(hash);
     if (old) {
-      try { const r = await reuseImage(hash, ext, slug, downloadStem, old); reused++; return r; }
+      try { const r = await reuseImage(hash, ext, slug, slug, old); reused++; return r; }
       catch (err) { log(`note: could not reuse ${label} (${err.message}); processing it`); }
     }
     const res = await fetch(`${SITE_URL}o/${hash}/original.${ext}`, { signal: AbortSignal.timeout(300000) });
     if (!res.ok) throw new Error(`original: HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     if (hashOf(buf) !== hash) throw new Error('original does not match its hash');
-    return await processImage(buf, hash, ext, slug, downloadStem);
+    return await processImage(buf, hash, ext, slug, slug);
   } catch (err) { log(`warning: skipping ${label} (${err.message})`); return null; }
 }
 
-const items = (await pool(entries, concurrency, async (e) => {
-  const downloadStem = e.category ? `${e.category}-${e.stem}` : e.stem;
-  const r = await imageFor(e.hash, e.ext, e.slug, downloadStem, e.path);
+const items = (await pool(list, concurrency, async (e) => {
+  const slug = slugByHash.get(e.hash);
+  const r = await imageFor(e.hash, e.ext, slug, e.name);
   if (!r) return null;
   done++;
-  if (done % 10 === 0 || done === entries.length) log(`processed ${done}/${entries.length}`);
+  if (done % 10 === 0 || done === list.length) log(`processed ${done}/${list.length}`);
   return {
-    id: e.slug,
-    title: e.category ? `${e.category}/${e.stem}` : e.stem,
-    name: e.stem,
-    cat: e.category,
+    id: slug,
+    name: e.name,
+    coll: collectionIds.has(e.collection) ? e.collection : null,
     w: r.w, h: r.h,
     ratio: ratioLabel(r.w, r.h),
     size: e.size,
@@ -275,44 +266,34 @@ const items = (await pool(entries, concurrency, async (e) => {
     og: r.og,
     o: r.orig,
     file: path.basename(r.orig),
-    src: e.path,
     ...(e.credit?.name ? { credit: e.credit } : {}),
   };
 })).filter(Boolean);
 
 const now = Date.now();
-items.sort((a, b) => b.added - a.added || a.title.localeCompare(b.title, 'en', { numeric: true }));
+items.sort((a, b) => b.added - a.added || a.name.localeCompare(b.name, 'en', { numeric: true }));
 // "new" = recent, but never the first batch: when everything is new, nothing is.
 const firstBatch = items.reduce((m, i) => Math.min(m, i.added), Infinity) + 864e5;
 for (const it of items) it.new = now - it.added < NEW_DAYS * 864e5 && it.added > firstBatch;
 
-const catCounts = new Map();
-for (const it of items) if (it.cat) catCounts.set(it.cat, (catCounts.get(it.cat) || 0) + 1);
-const categories = [...catCounts].sort((a, b) => a[0].localeCompare(b[0]))
-  .map(([id, count]) => ({ id, name: id.replace(/[_-]+/g, ' ').toLowerCase(), count }));
+// Collections with at least one wallpaper, in collections.json order; cover defaults to the newest member.
+const collections = collectionList.map((c) => {
+  const members = items.filter((i) => i.coll === c.id);
+  const cover = members.find((i) => i.hash === c.cover) || members[0];
+  return members.length ? { id: c.id, name: c.name, count: members.length, cover: cover.hash } : null;
+}).filter(Boolean);
 
 const colorCounts = new Map();
 for (const it of items) for (const c of it.colors) colorCounts.set(c, (colorCounts.get(c) || 0) + 1);
 const COLOR_ORDER = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink', 'light', 'gray', 'dark'];
 const colors = COLOR_ORDER.filter((c) => colorCounts.has(c)).map((id) => ({ id, count: colorCounts.get(id) }));
 
-// Community setups: approved photos of people's desks using these wallpapers.
-const setupList = await readFile(path.join(COMMUNITY, 'setups.json'), 'utf8').then(JSON.parse).catch(() => []);
-const idByHash = new Map(items.map((it) => [it.hash, it.id]));
-const setups = (await pool(setupList, concurrency, async (st) => {
-  const r = await imageFor(st.hash, 'jpg', `setup-${st.id}`, `setup-${st.id}`, `community setup ${st.id}`);
-  if (!r) return null;
-  return {
-    id: st.id, name: st.name, ...(st.link ? { link: st.link } : {}), caption: st.caption || '',
-    wallpapers: (st.wallpapers || []).map((h) => idByHash.get(h)).filter(Boolean),
-    added: st.added || now,
-    w: r.w, h: r.h, ratio: ratioLabel(r.w, r.h), size: r.size, color: r.color, pal: r.palette, lqip: r.lqip,
-    t: r.tBase, p: r.preview, og: r.og, o: r.orig, file: path.basename(r.orig), hash: r.hash,
-  };
-})).filter(Boolean).sort((a, b) => b.added - a.added);
-if (setupList.length) log(`community: ${setups.length} setup${setups.length === 1 ? '' : 's'}`);
+// Every slug a wallpaper ever had, so old links redirect forever.
+const aliases = collectAliases({ legacy: await readJson('legacy-ids.json', {}), prevAliases: prev?.aliases, prevItems: prev?.items });
+const liveSlugs = new Map(items.map((i) => [i.hash, i.id]));
+await writeFile(path.join(OUT, '_redirects'), redirectsFile(redirectsFor(aliases, liveSlugs)));
 
-const manifest = { name: SITE_NAME, generated: now, pipeline: PIPELINE, widths: THUMB_WIDTHS, categories, colors, items, setups };
+const manifest = { name: SITE_NAME, generated: now, pipeline: PIPELINE, widths: THUMB_WIDTHS, collections, colors, items, aliases };
 const manifestJson = JSON.stringify(manifest);
 const mHash = hashOf(manifestJson);
 await writeFile(path.join(OUT, `a/manifest.${mHash}.json`), manifestJson);
@@ -334,40 +315,47 @@ for (const f of await readdir(path.join(SRC, 'admin'))) await copyFile(path.join
 const tpl = await readFile(path.join(SRC, 'template.html'), 'utf8');
 const n = items.length;
 const homeDesc = n
-  ? `${n} high-resolution wallpaper${n === 1 ? '' : 's'}${categories.length ? ` — ${categories.map((c) => c.name).join(', ')}` : ''}. Free to download.`
+  ? `${n} high-resolution wallpaper${n === 1 ? '' : 's'}${collections.length ? ` — ${collections.map((c) => c.name).join(', ')} and more` : ''}. Free to download.`
   : 'A collection of high-resolution wallpapers.';
 
 await writeFile(path.join(OUT, 'index.html'), renderPage(tpl, {
-  root: '/', title: SITE_NAME, description: homeDesc, url: SITE_URL,
+  title: SITE_NAME, description: homeDesc, url: SITE_URL,
   image: items[0] ? SITE_URL + items[0].og : '', color: '#0a0a0b',
 }));
 
-await mkdir(path.join(OUT, 'community'), { recursive: true });
-await writeFile(path.join(OUT, 'community', 'index.html'), renderPage(tpl, {
-  root: '/', page: 'community', title: `community — ${SITE_NAME}`,
-  description: setups.length ? `${setups.length} desk setup${setups.length === 1 ? '' : 's'} using wallpapers from ${SITE_NAME}. Share yours.` : `Share your setup with a wallpaper from ${SITE_NAME}.`,
-  url: `${SITE_URL}community/`, image: (setups[0] || items[0]) ? SITE_URL + (setups[0] || items[0]).og : '', color: '#0a0a0b',
-}));
+const byHash = new Map(items.map((i) => [i.hash, i]));
+for (const c of collections) {
+  const cover = byHash.get(c.cover);
+  const count = `${c.count} wallpaper${c.count === 1 ? '' : 's'}`;
+  await mkdir(path.join(OUT, 'c', c.id), { recursive: true });
+  await writeFile(path.join(OUT, 'c', c.id, 'index.html'), renderPage(tpl, {
+    page: 'collection', collection: c.id,
+    title: `${c.name} — ${SITE_NAME}`,
+    description: `${c.name}: ${count} from ${SITE_NAME}. Free to download.`,
+    url: `${SITE_URL}c/${c.id}/`, image: SITE_URL + cover.og, color: cover.color,
+    banner: `<header class="banner" style="--c:${esc(cover.color)}"><img src="/${esc(cover.t)}-1440.webp" alt=""><div class="banner-text"><h1>${esc(c.name)}</h1><span class="mono">${count}</span></div></header>`,
+  }));
+}
 
 const mb = (b) => (b / 1048576).toFixed(1) + ' MB';
+const collName = new Map(collections.map((c) => [c.id, c.name]));
 for (const it of items) {
   const dir = path.join(OUT, 'w', it.id);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, 'index.html'), renderPage(tpl, {
-    root: '/',
-    title: `${it.title} — ${SITE_NAME}`,
-    description: `${it.w} × ${it.h} · ${it.ratio} · ${mb(it.size)}${it.cat ? ` · ${it.cat}` : ''}. From ${SITE_NAME}.`,
+    title: `${it.name} — ${SITE_NAME}`,
+    description: `${it.w} × ${it.h} · ${it.ratio} · ${mb(it.size)}${it.coll ? ` · ${collName.get(it.coll)}` : ''}. From ${SITE_NAME}.`,
     url: `${SITE_URL}w/${it.id}/`,
     image: SITE_URL + it.og, color: it.color, initial: it.id,
   }));
 }
 
-// Search engines: every wallpaper page, and keep them out of admin/API.
+// Search engines: every page, and keep them out of admin/API.
 const day = (ms) => new Date(ms).toISOString().slice(0, 10);
 await writeFile(path.join(OUT, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>${SITE_URL}</loc><lastmod>${day(now)}</lastmod></url>
-  <url><loc>${SITE_URL}community/</loc><lastmod>${day(now)}</lastmod></url>
+${collections.map((c) => `  <url><loc>${SITE_URL}c/${c.id}/</loc><lastmod>${day(now)}</lastmod></url>`).join('\n')}
 ${items.map((it) => `  <url><loc>${SITE_URL}w/${it.id}/</loc><lastmod>${day(it.added)}</lastmod></url>`).join('\n')}
 </urlset>
 `);
@@ -376,4 +364,4 @@ await writeFile(path.join(OUT, 'robots.txt'), `User-agent: *\nDisallow: /admin/\
 // Standalone 404 page.
 await writeFile(path.join(OUT, '404.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not found — ${esc(SITE_NAME)}</title><meta name="robots" content="noindex"><style>html{background:#0a0a0b;color:#ecebe8;font:15px/1.5 ui-sans-serif,system-ui,sans-serif}body{min-height:100vh;margin:0;display:grid;place-items:center;text-align:center}em{font:italic 44px/1 Georgia,serif;display:block;margin-bottom:14px}a{color:#8b8a86}</style></head><body><div><em>Nothing here.</em><a href="/">back to the wallpapers →</a></div></body></html>`);
 
-log(`done: ${n} wallpapers (${reused} reused, ${n - reused} processed), ${categories.length} categories in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+log(`done: ${n} wallpapers (${reused} reused, ${n - reused} processed), ${collections.length} collections in ${((Date.now() - t0) / 1000).toFixed(1)}s`);

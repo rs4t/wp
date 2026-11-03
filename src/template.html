@@ -27,7 +27,7 @@
 <link rel="stylesheet" href="{{root}}{{css}}">
 <script>document.documentElement.classList.add('js')</script>
 </head>
-<body data-root="{{root}}" data-initial="{{initial}}" data-page="{{page}}">
+<body data-root="{{root}}" data-initial="{{initial}}" data-page="{{page}}" data-collection="{{collection}}">
 
 <header class="bar" id="bar">
   <div class="bar-row">
@@ -60,6 +60,7 @@
 </header>
 
 <main>
+  {{banner}}
   <div class="grid" id="grid" aria-label="Wallpapers"></div>
   <div class="empty" id="none" hidden>
     <em>Nothing matches.</em>
