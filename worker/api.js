@@ -1,15 +1,13 @@
-import { handleInbox } from './inbox.js';
+import { applyChanges } from './changes.js';
 
 // Admin API: password login, list wallpapers, stream uploads to R2, and
-// commit adds / moves / deletes to wallpapers.json as one commit (one commit = one rebuild).
+// commit edits to wallpapers.json + collections.json as one commit (one commit = one rebuild).
 //
 // Secrets (Cloudflare dashboard → Worker → Settings → Variables and Secrets):
 //   ADMIN_PASSWORD  shared admin password
 //   GITHUB_TOKEN    fine-grained token with Contents: read & write on the repo
 // Vars (wrangler.jsonc): GITHUB_REPO, GITHUB_BRANCH; GITHUB_API only for local testing
 
-const ROOT_DIR = 'wallpapers';
-const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif', 'tif', 'tiff']);
 const MAX_UPLOAD = 50 * 1024 * 1024;
 const SESSION_DAYS = 30;
 const COOKIE = 'wp_admin';
@@ -82,34 +80,6 @@ async function headCommit(env) {
   return { sha: ref.object.sha, tree: commit.tree.sha };
 }
 
-// "wallpapers/<category>/<name>.<ext>" → its parts.
-function splitPath(p) {
-  const rel = p.slice(ROOT_DIR.length + 1).split('/');
-  return { category: rel.length > 1 ? rel[0] : '', name: rel[rel.length - 1] };
-}
-
-// ---------- validation ----------
-
-const ext = (p) => (p.match(/\.([^./]+)$/)?.[1] || '').toLowerCase();
-
-function cleanCategory(c) {
-  const v = String(c || '').trim().toLowerCase().replace(/[^a-z0-9 _-]+/g, '').replace(/\s+/g, '-').slice(0, 40);
-  return v.replace(/^[-_]+|[-_]+$/g, '');
-}
-
-function cleanName(n) {
-  return String(n || '').normalize('NFC').replace(/[\u0000-\u001f\u007f/\\:*?"<>|]+/g, ' ')
-    .replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 100);
-}
-
-const pathFor = (category, name, extension) => `${ROOT_DIR}/${category ? category + '/' : ''}${name}.${extension}`;
-
-function uniquePath(category, name, extension, taken) {
-  let p = pathFor(category, name, extension);
-  for (let n = 2; taken.has(p.toLowerCase()); n++) p = pathFor(category, `${name} ${n}`, extension);
-  taken.add(p.toLowerCase());
-  return p;
-}
 
 // ---------- handlers ----------
 
@@ -138,9 +108,10 @@ async function uploadOriginal(request, env, url) {
   return json({ hash: sha1.slice(0, 10) });
 }
 
-// [{ path: "wallpapers/<category>/<name>.<ext>", hash, size, added, credit? }]
+// ---------- the two data files ----------
+
 const LIST = 'wallpapers.json';
-const SETUPS = 'community/setups.json';
+const COLLECTIONS = 'collections.json';
 
 async function readJsonFile(env, tree, path, fallback) {
   const entry = tree.find((e) => e.path === path && e.type === 'blob');
@@ -155,111 +126,35 @@ async function jsonBlob(env, data) {
   return blob.sha;
 }
 
-function cleanCredit(c) {
-  if (!c) return null;
-  const name = String(c.name || '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 60);
-  if (!name) return null;
-  let link = String(c.link || '').trim().slice(0, 300);
-  if (link && !/^https?:\/\//i.test(link)) link = 'https://' + link;
-  try { if (link) link = new URL(link).href; } catch { link = ''; }
-  return link ? { name, link } : { name };
-}
-
-// Applies every kind of change as one commit:
-//   add      new wallpapers (optional credit)    move     move / rename (credits follow)
-//   delete   remove wallpapers (and credits)     credit   set / clear credits on wallpapers
-//   setups   publish community setups            unsetup  remove community setups
+// One admin save = one commit (= one rebuild). The change rules live in changes.js.
 async function commit(request, env) {
   const body = await request.json().catch(() => null);
   if (!body) return fail(400, 'Bad request');
-  const list = (k) => (Array.isArray(body[k]) ? body[k] : []);
-  const add = list('add'), del = list('delete'), move = list('move'), credit = list('credit'), setups = list('setups'), unsetup = list('unsetup');
-  const total = add.length + del.length + move.length + credit.length + setups.length + unsetup.length;
-  if (!total) return fail(400, 'Nothing to do');
-  if (total > 300) return fail(400, 'Too many changes at once');
+  // Sizes of the newly uploaded files, straight from R2.
+  const uploads = new Map();
+  for (const a of Array.isArray(body.add) ? body.add : []) {
+    const obj = /^[0-9a-f]{10}$/.test(a?.hash || '') && (await env.WALLS.head(`orig/${a.hash}`));
+    if (obj) uploads.set(a.hash, obj.size);
+  }
 
   // Retry if someone else pushed between reading and updating the branch.
   for (let attempt = 0; attempt < 3; attempt++) {
     const head = await headCommit(env);
-    const fullTree = (await ghJson(env, `/git/trees/${head.tree}?recursive=1`)).tree;
-    const walls = await readJsonFile(env, fullTree, LIST, []);
-    const byPath = new Map(walls.map((w) => [w.path, w]));
-    const taken = new Set(walls.map((w) => w.path.toLowerCase()));
-    const tree = [];
-    const added = [];
-    const setupList = setups.length || unsetup.length ? await readJsonFile(env, fullTree, SETUPS, []) : null;
-    // Originals stay in R2 when a wallpaper is deleted, so reverting the commit brings it back.
-    const gone = new Set(del.map((p) => byPath.get(p)));
-    let changed = del.length > 0;
-    const uploaded = async (hash) => /^[0-9a-f]{10}$/.test(hash || '') && (await env.WALLS.head(`orig/${hash}`));
+    const tree = (await ghJson(env, `/git/trees/${head.tree}`)).tree;
+    const walls = await readJsonFile(env, tree, LIST, []);
+    const collections = await readJsonFile(env, tree, COLLECTIONS, []);
+    const r = applyChanges({ walls, collections, body, uploads, now: Date.now() });
+    if (r.error) return fail(400, r.error);
 
-    for (const p of [...del, ...move.map((m) => m.from), ...credit.map((c) => c.path)]) {
-      if (!byPath.has(p)) return fail(400, `Not found: ${p}`);
-    }
-    for (const p of del) taken.delete(p.toLowerCase());
-    for (const m of move) {
-      const w = byPath.get(m.from);
-      const from = splitPath(w.path);
-      const category = m.category === undefined ? from.category : cleanCategory(m.category);
-      const oldStem = from.name.replace(/\.[^.]+$/, '');
-      const stem = m.name === undefined ? oldStem : cleanName(m.name);
-      if (!stem) return fail(400, 'Every wallpaper needs a name');
-      if (from.category === category && stem === oldStem) continue;
-      taken.delete(w.path.toLowerCase());
-      w.path = uniquePath(category, stem, ext(w.path), taken);
-      changed = true;
-    }
-    for (const a of add) {
-      const extension = ext(`x.${a.ext || ''}`);
-      const name = cleanName(a.name);
-      const obj = await uploaded(a.hash);
-      if (!obj) return fail(400, 'Upload not found — please upload again');
-      if (!IMAGE_EXT.has(extension)) return fail(400, `Unsupported file type: .${a.ext}`);
-      if (!name) return fail(400, 'Every wallpaper needs a name');
-      const p = uniquePath(cleanCategory(a.category), name, extension, taken);
-      const c = cleanCredit(a.credit);
-      walls.push({ path: p, hash: a.hash, size: obj.size, added: Date.now(), ...(c ? { credit: c } : {}) });
-      added.push(p);
-      changed = true;
-    }
-    for (const c of credit) {
-      const w = byPath.get(c.path), v = cleanCredit(c);
-      if (v) w.credit = v; else delete w.credit;
-      changed = true;
-    }
-    for (const st of setups) {
-      if (!(await uploaded(st.hash))) return fail(400, 'Upload not found — please upload again');
-      const id = crypto.randomUUID().replace(/-/g, '').slice(0, 10);
-      const who = cleanCredit({ name: st.name, link: st.link }) || { name: 'anonymous' };
-      setupList.push({
-        id, hash: st.hash, ...who,
-        caption: String(st.caption || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 200),
-        wallpapers: (Array.isArray(st.wallpapers) ? st.wallpapers : []).filter((h) => /^[0-9a-f]{10}$/.test(h)).slice(0, 5),
-        added: Date.now(),
-      });
-    }
-    for (const id of unsetup) {
-      const i = setupList.findIndex((x) => x.id === id);
-      if (i < 0) return fail(400, `Setup not found: ${id}`);
-      setupList.splice(i, 1);
-    }
-    if (changed) tree.push({ path: LIST, mode: '100644', type: 'blob', sha: await jsonBlob(env, walls.filter((w) => !gone.has(w))) });
-    if (setupList && (setups.length || unsetup.length)) tree.push({ path: SETUPS, mode: '100644', type: 'blob', sha: await jsonBlob(env, setupList) });
-    if (!tree.length) return json({ ok: true, noop: true });
+    const files = [];
+    if (JSON.stringify(r.walls) !== JSON.stringify(walls)) files.push({ path: LIST, mode: '100644', type: 'blob', sha: await jsonBlob(env, r.walls) });
+    if (JSON.stringify(r.collections) !== JSON.stringify(collections)) files.push({ path: COLLECTIONS, mode: '100644', type: 'blob', sha: await jsonBlob(env, r.collections) });
+    if (!files.length) return json({ ok: true, noop: true });
 
-    const parts = [];
-    const n = (k, arr) => arr.length && parts.push(`${k} ${arr.length}`);
-    n('add', add);
-    const renames = move.filter((m) => m.name !== undefined);
-    n('rename', renames); n('move', move.filter((m) => m.name === undefined)); n('delete', del); n('credit', credit);
-    const what = parts.length ? `${parts.join(', ')} wallpaper${add.length + move.length + del.length + credit.length === 1 ? '' : 's'}` : '';
-    const comm = [setups.length && `publish ${setups.length} setup${setups.length === 1 ? '' : 's'}`, unsetup.length && `remove ${unsetup.length} setup${unsetup.length === 1 ? '' : 's'}`].filter(Boolean).join(', ');
-    const message = `Admin: ${[what, comm].filter(Boolean).join('; ')}`;
-
-    const newTree = await ghJson(env, '/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: head.tree, tree }) });
-    const newCommit = await ghJson(env, '/git/commits', { method: 'POST', body: JSON.stringify({ message, tree: newTree.sha, parents: [head.sha] }) });
+    const newTree = await ghJson(env, '/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: head.tree, tree: files }) });
+    const newCommit = await ghJson(env, '/git/commits', { method: 'POST', body: JSON.stringify({ message: r.message, tree: newTree.sha, parents: [head.sha] }) });
     const res = await gh(env, `/git/refs/heads/${env.GITHUB_BRANCH}`, { method: 'PATCH', body: JSON.stringify({ sha: newCommit.sha, force: false }) });
-    if (res.ok) return json({ ok: true, commit: newCommit.sha, url: `https://github.com/${env.GITHUB_REPO}/commit/${newCommit.sha}`, added });
+    if (res.ok) return json({ ok: true, commit: newCommit.sha, url: `https://github.com/${env.GITHUB_REPO}/commit/${newCommit.sha}` });
     if (res.status !== 422 && res.status !== 409) {
       const b = await res.json().catch(() => ({}));
       return fail(502, b.message || `GitHub ${res.status}`);
@@ -285,12 +180,10 @@ export async function handleApi(request, env, pathname) {
     if (route === 'GET /api/list') {
       const head = await headCommit(env);
       const tree = (await ghJson(env, `/git/trees/${head.tree}`)).tree;
-      const files = (await readJsonFile(env, tree, LIST, [])).map((w) => ({ path: w.path, hash: w.hash, size: w.size, ...splitPath(w.path) }));
-      return json({ head: head.sha, files });
+      return json({ head: head.sha, files: await readJsonFile(env, tree, LIST, []), collections: await readJsonFile(env, tree, COLLECTIONS, []) });
     }
     if (route === 'PUT /api/upload') return await uploadOriginal(request, env, new URL(request.url));
     if (route === 'POST /api/commit') return await commit(request, env);
-    if (pathname.startsWith('/api/inbox')) return (await handleInbox(request, env, pathname)) || fail(404, 'Not found');
     return fail(404, 'Not found');
   } catch (err) {
     const status = err.status === 401 || err.status === 403 ? 502 : 500;
