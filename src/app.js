@@ -7,23 +7,22 @@
   const ROOT = new URL(body.dataset.root || './', location.href);
   const url = (p) => new URL(p, ROOT).href;
   const pageUrl = (id) => url(id ? `w/${encodeURIComponent(id)}/` : '');
-  // The community page shows setups with the same grid + viewer; its entries live at community/#id.
-  const COMMUNITY = body.dataset.page === 'community';
-  const shareUrl = (id) => (COMMUNITY ? url('community/') + '#' + encodeURIComponent(id) : pageUrl(id));
-  const routeUrl = (id) => (COMMUNITY ? url('community/') + location.search + (id ? '#' + encodeURIComponent(id) : '') : pageUrl(id) + location.search);
+  // A collection page shows only its wallpapers; closing the viewer comes back to it.
+  const COLL = body.dataset.page === 'collection' ? body.dataset.collection : null;
+  const HOME = COLL ? url(`c/${encodeURIComponent(COLL)}/`) : url('');
+  const routeUrl = (id) => (id ? pageUrl(id) : HOME) + location.search;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
-  const grid = $('#grid'), bar = $('#bar'), chipsEl = $('#chips'), pill = $('#pill');
+  const grid = $('#grid'), bar = $('#bar'), panel = $('#panel'), qInput = $('#q');
   const lb = $('#lb'), stage = $('#stage');
 
   let data, items = [], byId = new Map();
   let view = [];          // currently filtered + sorted items
   const SORTS = ['random', 'newest', 'oldest', 'popular'];
-  let cat = null, sort = 'random', color = null, favOnly = false;
+  let sort = 'random', color = null, query = '';
   let counts = null;      // downloads per wallpaper hash, once /api/stats answers
-  let wFilter = null;     // community: only setups using this wallpaper id
   let shuffled = [];      // random order, fixed until the visitor picks random again
   let tiles = new Map();  // id -> { el, card, img, col, x, y, w, h }
   let cols = 0, colW = 0;
@@ -37,10 +36,6 @@
     get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
   };
-  // Favorites live in this browser only, keyed by file hash so renames keep them.
-  const favs = new Set((() => { try { return JSON.parse(localStorage.getItem('wp-favs') || '[]'); } catch { return []; } })());
-  const saveFavs = () => { try { localStorage.setItem('wp-favs', JSON.stringify([...favs])); } catch {} };
-  const HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>';
   const SWATCH = { red: '#e5484d', orange: '#f76b15', yellow: '#ffc53d', green: '#46a758', teal: '#12a594', blue: '#3e63dd', purple: '#8e4ec6', pink: '#d6409f', light: '#e8e6e1', gray: '#8b8d98', dark: '#1a1a1d' };
   function toast(msg) {
     let t = $('.toast');
@@ -61,53 +56,55 @@
   function init(m) {
     data = m;
     window.WP = { data: m, url };
-    items = COMMUNITY
-      ? (m.setups || []).map((st) => ({ ...st, title: st.caption || `${st.name}'s setup`, cat: null, colors: [], uses: st.wallpapers }))
-      : m.items;
+    const collName = new Map(m.collections.map((c) => [c.id, c.name]));
+    for (const it of m.items) it.collName = collName.get(it.coll) || '';
+    items = COLL ? m.items.filter((it) => it.coll === COLL) : m.items;
     items.forEach((it, i) => { it.i = i; byId.set(it.id, it); });
+    // A wallpaper opened directly from another collection still needs its viewer.
+    if (body.dataset.initial && !byId.has(body.dataset.initial)) {
+      const it = m.items.find((x) => x.id === body.dataset.initial);
+      if (it) byId.set(it.id, it);
+    }
 
     const q = new URLSearchParams(location.search);
-    if (COMMUNITY) {
-      sort = 'newest';
-      if (m.items.some((it) => it.id === q.get('w'))) wFilter = q.get('w');
-    }
-    if (q.get('c') && m.categories.some((c) => c.id === q.get('c'))) cat = q.get('c');
     if (SORTS.includes(q.get('sort'))) sort = q.get('sort');
     if (q.get('color') && m.colors?.some((c) => c.id === q.get('color'))) color = q.get('color');
-    for (const h of [...favs]) if (!items.some((it) => it.hash === h)) favs.delete(h);
+    query = (q.get('q') || '').trim();
+    qInput.value = query;
     reshuffle();
-    if (!COMMUNITY) loadStats();
+    loadStats();
 
-    buildChips();
+    buildStrip();
+    buildSorts();
     buildSwatches();
-    updateFavButton();
     buildTiles();
     buildFooter();
     applyView(false);
+    if (query || color || sort !== 'random') setPanel(true, false);
 
-    $('#empty').hidden = items.length > 0 || COMMUNITY;
-    $('#cempty').hidden = !COMMUNITY || items.length > 0;
+    $('#empty').hidden = items.length > 0;
     $('#shuffle').addEventListener('click', shuffle);
-    $('#favs').addEventListener('click', () => { favOnly = !favOnly; toGridTop(); applyView(true); });
-    $('#clearFilters').addEventListener('click', () => { cat = null; color = null; favOnly = false; applyView(true); syncQuery(); });
-    $('#sort').addEventListener('click', () => {
-      do sort = SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length]; while (sort === 'popular' && !counts);
-      if (sort === 'random') reshuffle();
-      toGridTop(); applyView(true); syncQuery();
+    $('#searchBtn').addEventListener('click', () => setPanel(panel.hidden, true));
+    $('#clearFilters').addEventListener('click', () => { query = ''; qInput.value = ''; color = null; applyView(true); syncQuery(); });
+    let qt;
+    qInput.addEventListener('input', () => {
+      clearTimeout(qt);
+      qt = setTimeout(() => { query = qInput.value.trim(); toGridTop(); applyView(true); syncQuery(); }, 160);
     });
+    qInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setPanel(false, false); $('#searchBtn').focus(); } });
 
     let rt;
-    addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(false); movePill(false); refit(); }, 120); });
+    addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(false); refit(); }, 120); });
     addEventListener('scroll', onScroll, { passive: true });
     addEventListener('popstate', onRoute);
     addEventListener('keydown', onKey);
     onScroll();
 
-    const initial = COMMUNITY ? decodeURIComponent(location.hash.slice(1)) : body.dataset.initial;
+    const initial = body.dataset.initial;
     if (initial && byId.has(initial)) {
       revealAll(true);
       openLightbox(byId.get(initial), { fromTile: false, push: false });
-    } else if (!COMMUNITY && !reduced && items.length && !store.get('intro')) {
+    } else if (!COLL && !reduced && items.length && !store.get('intro')) {
       store.set('intro', '1');
       intro();
     } else {
@@ -135,9 +132,28 @@
     return n ? `${n} download${n === 1 ? '' : 's'}` : '';
   }
 
+  // ---------- search panel: text, sort, color ----------
+  function setPanel(open, focus) {
+    panel.hidden = !open;
+    $('#searchBtn').setAttribute('aria-expanded', String(open));
+    if (open && focus) qInput.focus({ preventScroll: true });
+  }
+  function buildSorts() {
+    const row = $('#sorts');
+    for (const s of SORTS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.dataset.sort = s; b.textContent = s;
+      b.addEventListener('click', () => {
+        if (s === 'popular' && !counts) return toast('Download counts are still loading');
+        if (s === 'random') reshuffle();
+        sort = s; toGridTop(); applyView(true); syncQuery();
+      });
+      row.append(b);
+    }
+  }
   function buildSwatches() {
     const row = $('#swatches');
-    if (!data.colors?.length) { row.hidden = true; return; }
+    if (!data.colors?.length) { row.closest('.panel-row').hidden = true; return; }
     for (const c of data.colors) {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'swatch'; b.dataset.color = c.id;
@@ -149,42 +165,6 @@
     }
   }
 
-  function updateFavButton() {
-    const b = $('#favs');
-    b.hidden = favs.size === 0 && !favOnly;
-    b.querySelector('span').textContent = favs.size;
-    b.setAttribute('aria-pressed', String(favOnly));
-  }
-  function toggleFav(it) {
-    const on = !favs.has(it.hash);
-    on ? favs.add(it.hash) : favs.delete(it.hash);
-    saveFavs();
-    const t = tiles.get(it.id);
-    t?.el.classList.toggle('faved', on);
-    t?.el.querySelector('.heart').setAttribute('aria-pressed', String(on));
-    if (on) for (const el of [t?.el.querySelector('.heart'), cur === it ? $('#fav') : null]) {
-      if (el) { el.classList.remove('pop'); el.offsetWidth; el.classList.add('pop'); }
-    }
-    if (cur === it) setFavState(it);
-    if (favOnly && !favs.size) favOnly = false;
-    updateFavButton();
-    if (favOnly) applyView(true);
-  }
-  function setFavState(it) {
-    const b = $('#fav');
-    b.setAttribute('aria-pressed', String(favs.has(it.hash)));
-    b.setAttribute('aria-label', favs.has(it.hash) ? 'Remove from favorites (F)' : 'Add to favorites (F)');
-  }
-
-  function renderWFilter() {
-    const el = $('#wfilter');
-    const w = wFilter && data.items.find((it) => it.id === wFilter);
-    el.hidden = !w;
-    if (!w) return;
-    el.innerHTML = `setups with <a href="${pageUrl(w.id)}">${escapeHtml(w.title)}</a> · <button class="linkish" type="button">show all</button>`;
-    el.querySelector('button').onclick = () => { wFilter = null; history.replaceState(history.state, '', url('community/')); applyView(true); };
-  }
-
   function reshuffle() {
     shuffled = items.slice();
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -193,37 +173,23 @@
     }
   }
 
-  // ---------- chips / sort / footer ----------
-  function buildChips() {
-    const mk = (id, name, count) => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'chip'; b.dataset.cat = id ?? '';
-      b.innerHTML = `${name}<sup>${count}</sup>`;
-      b.addEventListener('click', () => {
-        if (cat === id) return;
-        cat = id; toGridTop(); applyView(true); syncQuery();
-        b.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
-      });
-      chipsEl.append(b);
-    };
-    if (data.categories.length > 1 || items.some((i) => !i.cat)) {
-      mk(null, 'all', items.length);
-      data.categories.forEach((c) => mk(c.id, c.name, c.count));
-    } else {
-      chipsEl.style.visibility = 'hidden';
-    }
-  }
-  function movePill(animate = true) {
-    const active = chipsEl.querySelector('.chip[aria-pressed="true"]');
-    if (!active) return;
-    if (!animate) pill.style.transition = 'none';
-    pill.style.width = active.offsetWidth + 'px';
-    pill.style.transform = `translateX(${active.offsetLeft}px)`;
-    if (!animate) { pill.offsetWidth; pill.style.transition = ''; }
+  // ---------- collections strip / footer ----------
+  function buildStrip() {
+    const strip = $('#strip');
+    $('#wallHead').hidden = !!COLL;
+    if (COLL || !data.collections.length) return;
+    const byHash = new Map(data.items.map((i) => [i.hash, i]));
+    strip.innerHTML = data.collections.map((c) => {
+      const cover = byHash.get(c.cover);
+      return `<a class="cover" href="${url(`c/${encodeURIComponent(c.id)}/`)}" style="--c:${cover.color}">` +
+        `<img src="${url(`${cover.t}-960.webp`)}" alt="" loading="lazy" decoding="async">` +
+        `<b>${escapeHtml(c.name)}</b><span class="mono">${c.count}</span></a>`;
+    }).join('');
+    strip.hidden = false;
   }
   function syncQuery() {
     const q = new URLSearchParams();
-    if (cat) q.set('c', cat);
+    if (query) q.set('q', query);
     if (color) q.set('color', color);
     if (sort !== 'random') q.set('sort', sort);
     const s = q.toString();
@@ -234,7 +200,6 @@
     const fmt = d.toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' });
     const n = data.items.length;
     $('#foot').innerHTML = `<span>${pad(n)} wallpapers · updated ${fmt}</span>` +
-      `<button class="linkish" type="button" data-submit>share your setup or send a wallpaper →</button>` +
       `<span>free to download · <a href="https://egorz.com">egorz.com</a></span>`;
   }
 
@@ -244,34 +209,25 @@
     for (const it of items) {
       const a = document.createElement('a');
       a.className = 'tile';
-      a.href = shareUrl(it.id);
+      a.href = pageUrl(it.id);
       a.dataset.id = it.id;
-      a.setAttribute('aria-label', `${it.title}, ${it.w} by ${it.h}`);
+      a.setAttribute('aria-label', `${it.name}, ${it.w} by ${it.h}`);
       a.innerHTML =
         `<div class="par"><div class="card"><div class="tilt" style="--c:${it.color}">` +
         `<div class="lq" style="background-image:url(${it.lqip});background-color:${it.color}"></div>` +
         `<picture><source type="image/avif" srcset="${srcset(it, 'avif')}"><img alt="" loading="lazy" decoding="async" width="${it.w}" height="${it.h}" srcset="${srcset(it, 'webp')}"></picture>` +
         `<div class="lit"></div>` +
-        (COMMUNITY
-          ? `<div class="meta"><b>${escapeHtml(it.name)}</b>${it.caption ? `<span class="mono">${escapeHtml(it.caption)}</span>` : ''}</div>`
-          : `<div class="meta"><b>${escapeHtml(it.title)}</b><span class="mono">${it.w}×${it.h}</span></div>`) +
+        `<div class="meta"><b>${escapeHtml(it.name)}</b><span class="mono">${it.w}×${it.h}</span></div>` +
         (it.new ? `<span class="new">new</span>` : '') +
-        `<span class="heart" role="button" tabindex="0" aria-label="Favorite ${escapeHtml(it.title)}" aria-pressed="${favs.has(it.hash)}">${HEART}</span>` +
         `</div></div></div>`;
-      if (favs.has(it.hash)) a.classList.add('faved');
       const img = a.querySelector('img');
       const done = () => img.classList.add('ok');
       img.addEventListener('load', done, { once: true });
       img.addEventListener('error', done, { once: true });
       a.addEventListener('click', (e) => {
-        if (e.target.closest('.heart')) { e.preventDefault(); e.stopPropagation(); toggleFav(it); return; }
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         e.preventDefault();
         openLightbox(it, { fromTile: true, push: true });
-      });
-      a.querySelector('.heart').addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault(); e.stopPropagation(); toggleFav(it);
       });
       if (finePointer && !reduced) bindTilt(a);
       tiles.set(it.id, { el: a, card: a.querySelector('.card'), tilt: a.querySelector('.tilt'), img, src: a.querySelector('source') });
@@ -304,24 +260,21 @@
 
   // ---------- view: filter + sort + masonry ----------
   function applyView(animate) {
-    view = items.filter((it) => (!cat || it.cat === cat) && (!color || it.colors?.includes(color)) && (!favOnly || favs.has(it.hash)) && (!wFilter || it.uses?.includes(wFilter)));
-    if (COMMUNITY) renderWFilter();
+    view = items.filter((it) => !color || it.colors?.includes(color));
     const rank = new Map(shuffled.map((it, i) => [it, i]));
     if (sort === 'oldest') view.reverse();
     else if (sort === 'random') view.sort((a, b) => rank.get(a) - rank.get(b));
     else if (sort === 'popular') view.sort((a, b) => (counts?.[b.hash] || 0) - (counts?.[a.hash] || 0) || rank.get(a) - rank.get(b));
+    // A search ranks by match; the sort order breaks ties.
+    if (query) view = window.wpSearch.rank(view, query);
     const visible = new Set(view.map((v) => v.id));
 
-    chipsEl.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String((c.dataset.cat || null) === cat)));
-    $('#sort').textContent = sort;
-    $('#sort').dataset.mode = sort;
-    $('#sort').setAttribute('aria-label', `Sort: ${sort}. Change sort order`);
-    $('#count').textContent = `${pad(view.length)} ${COMMUNITY ? (view.length === 1 ? 'setup' : 'setups') : view.length === 1 ? 'wallpaper' : 'wallpapers'}`;
+    $('#sorts').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sort === sort)));
+    $('#count').textContent = `${pad(view.length)} ${view.length === 1 ? 'wallpaper' : 'wallpapers'}`;
     $('#swatches').querySelectorAll('.swatch').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.color === color)));
     $('#swatches').classList.toggle('picking', !!color);
-    updateFavButton();
+    $('#searchBtn').classList.toggle('active', !!(query || color));
     $('#none').hidden = view.length > 0 || items.length === 0;
-    movePill(animate);
 
     if (!animate || reduced) {
       for (const [id, t] of tiles) t.el.classList.toggle('gone', !visible.has(id));
@@ -438,7 +391,7 @@
     el.innerHTML =
       `<div class="intro-img" style="background-image:url(${url(`${hero.t}-1440.webp`)}),url(${hero.lqip});background-color:${hero.color}"></div>` +
       `<div class="intro-word"><h1 class="intro-title"><span class="w"><span>egor's</span></span> <span class="w"><span>wallpapers</span></span></h1>` +
-      `<div class="intro-meta mono"><span class="n">000</span><span>wallpapers</span><span>·</span><span>${data.categories.length || 1} ${data.categories.length === 1 ? 'category' : 'categories'}</span></div></div>` +
+      `<div class="intro-meta mono"><span class="n">000</span><span>wallpapers</span><span>·</span><span>${data.collections.length} ${data.collections.length === 1 ? 'collection' : 'collections'}</span></div></div>` +
       `<div class="intro-line"></div>`;
     body.append(el);
     document.documentElement.classList.add('locked');
@@ -513,7 +466,7 @@
     Object.assign(f.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: it.color });
     const t = tiles.get(it.id);
     const lo = t?.img.currentSrc || url(`${it.t}-960.webp`);
-    f.innerHTML = `<div class="zm"><img class="lo" src="${it.lqip}" alt=""><img class="lo2" src="${lo}" alt=""><img class="hi" alt="${escapeHtml(it.title)}" decoding="async"></div><span class="spin"></span>`;
+    f.innerHTML = `<div class="zm"><img class="lo" src="${it.lqip}" alt=""><img class="lo2" src="${lo}" alt=""><img class="hi" alt="${escapeHtml(it.name)}" decoding="async"></div><span class="spin"></span>`;
     const hi = f.querySelector('.hi');
     hi.onload = () => { hi.classList.add('ok'); f.classList.add('sharp'); };
     hi.src = url(it.p);
@@ -538,33 +491,19 @@
     const idx = view.indexOf(it);
     const n = view.length;
     lbIdx.textContent = idx >= 0 ? `${pad(idx + 1)} / ${pad(n)}` : '';
-    const credit = $('#lbCredit'), uses = $('#lbUses'), seen = $('#lbSeen');
-    if (COMMUNITY) {
-      lbTitle.textContent = it.title;
-      lbSpec.textContent = new Date(it.added).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' });
-      credit.innerHTML = creditHtml(it); credit.hidden = false;
-      const used = (it.uses || []).map((id) => data.items.find((x) => x.id === id)).filter(Boolean);
-      uses.innerHTML = used.map((w) => `<a class="use" href="${pageUrl(w.id)}"><img src="${url(`${w.t}-480.webp`)}" alt=""><span>${escapeHtml(w.title)}</span></a>`).join('');
-      uses.hidden = !used.length;
-      document.title = `${it.title} — community — egor's wallpapers`;
-      $('#copy span').textContent = 'copy link';
-      return;
-    }
+    const credit = $('#lbCredit'), coll = $('#lbColl');
     credit.hidden = !it.credit;
     if (it.credit) credit.innerHTML = creditHtml(it.credit);
-    uses.hidden = true;
-    const inSetups = (data.setups || []).filter((st) => st.wallpapers.includes(it.id)).length;
-    seen.hidden = !inSetups;
-    if (inSetups) { seen.href = url(`community/?w=${encodeURIComponent(it.id)}`); seen.textContent = `seen in ${inSetups} setup${inSetups === 1 ? '' : 's'} →`; }
-    lbTitle.innerHTML = it.cat ? `<span class="lb-cat">${escapeHtml(it.cat)}/</span>${escapeHtml(it.name)}` : escapeHtml(it.title);
+    coll.hidden = !it.coll;
+    if (it.coll) { coll.href = url(`c/${encodeURIComponent(it.coll)}/`); coll.textContent = it.collName; }
+    lbTitle.textContent = it.name;
     const dls = countLabel(it);
     lbSpec.innerHTML = `${it.w} × ${it.h}<i>/</i>${it.ratio}<i>/</i>${mb(it.size)}<i>/</i>${it.file.split('.').pop().toUpperCase()}${dls ? `<i>/</i>${dls}` : ''}`;
-    setFavState(it);
     dl.href = url(it.o);
     dl.setAttribute('download', it.file);
     dlSize.textContent = mb(it.size);
     if (animate) for (const e of [lbIdx, lbTitle, lbSpec]) { e.classList.remove('swap'); e.offsetWidth; e.classList.add('swap'); }
-    document.title = `${it.title} — egor's wallpapers`;
+    document.title = `${it.name} — egor's wallpapers`;
     $('#copy span').textContent = 'copy link';
   }
 
@@ -628,7 +567,7 @@
     const it = cur;
     resetZoom(false);
     if (push) history.pushState({}, '', routeUrl(''));
-    document.title = COMMUNITY ? "community — egor's wallpapers" : "egor's wallpapers";
+    document.title = COLL ? `${data.collections.find((c) => c.id === COLL)?.name} — egor's wallpapers` : "egor's wallpapers";
     lb.classList.add('leaving');
     lb.classList.remove('ready');
 
@@ -710,7 +649,6 @@
 
   // lightbox controls
   $('#close').addEventListener('click', () => closeLightbox());
-  $('#fav').addEventListener('click', () => cur && toggleFav(cur));
   dl.addEventListener('click', () => {
     if (!cur) return;
     try { navigator.sendBeacon(url('api/dl'), cur.hash); } catch {}
@@ -720,7 +658,7 @@
   $('#next').addEventListener('click', () => go(1));
   stage.addEventListener('click', (e) => { if (e.target === stage) closeLightbox(); });
   $('#copy').addEventListener('click', async () => {
-    const link = shareUrl(cur.id);
+    const link = pageUrl(cur.id);
     try { await navigator.clipboard.writeText(link); }
     catch {
       const ta = document.createElement('textarea'); ta.value = link; body.append(ta); ta.select();
@@ -887,17 +825,17 @@
   addEventListener('pointercancel', endPointer);
 
   function onKey(e) {
-    if (e.metaKey || e.ctrlKey || e.altKey || $('.intro') || $('.sub-modal.open')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || $('.intro')) return;
     if (!lb.hidden) {
       if (e.key === 'Escape') { e.preventDefault(); z.s > 1 ? resetZoom() : closeLightbox(); }
-      else if ((e.key === 'f' || e.key === 'F') && !COMMUNITY) toggleFav(cur);
       else if (e.key === 'z' || e.key === 'Z') { if (z.s > 1) resetZoom(); else if (fig) { zoomAt(maxZoom(), innerWidth / 2, innerHeight / 2); applyZoom(); } }
       else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
       else if (e.key === 'r' || e.key === 'R') shuffle();
       else if (e.key === 'Tab') trapFocus(e);
-    } else if ((e.key === 'r' || e.key === 'R') && !/input|textarea/i.test(document.activeElement?.tagName)) {
-      shuffle();
+    } else if (!/input|textarea/i.test(document.activeElement?.tagName)) {
+      if (e.key === 'r' || e.key === 'R') shuffle();
+      else if (e.key === '/') { e.preventDefault(); setPanel(true, true); }
     }
   }
   function trapFocus(e) {
@@ -910,8 +848,8 @@
 
   function onRoute() {
     if (busy) { clearTimeout(onRoute.t); onRoute.t = setTimeout(onRoute, 120); return; }
-    const m = !COMMUNITY && location.href.startsWith(ROOT.href) && location.href.slice(ROOT.href.length).match(/^w\/([^/?#]+)\/?/);
-    const id = COMMUNITY ? decodeURIComponent(location.hash.slice(1)) || null : m ? decodeURIComponent(m[1]) : null;
+    const m = location.href.startsWith(ROOT.href) && location.href.slice(ROOT.href.length).match(/^w\/([^/?#]+)\/?/);
+    const id = m ? decodeURIComponent(m[1]) : null;
     if (id && byId.has(id)) {
       if (!cur) openLightbox(byId.get(id), { fromTile: true, push: false });
       else if (cur.id !== id) go(1, byId.get(id));

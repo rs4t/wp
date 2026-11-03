@@ -197,7 +197,7 @@ function renderPage(tpl, { title, description, url, image, color, initial, page 
     .replaceAll('{{banner}}', banner)
     .replaceAll('{{css}}', assets.css)
     .replaceAll('{{js}}', assets.js)
-    .replaceAll('{{submit}}', assets.submit);
+    .replaceAll('{{search}}', assets.search);
 }
 
 const assets = {};
@@ -300,7 +300,7 @@ await writeFile(path.join(OUT, `a/manifest.${mHash}.json`), manifestJson);
 await writeFile(path.join(OUT, 'manifest.json'), manifestJson); // unhashed copy for the admin page
 
 // Static assets, content-hashed for immutable caching.
-for (const [key, file] of [['css', 'styles.css'], ['js', 'app.js'], ['submit', 'submit.js']]) {
+for (const [key, file] of [['css', 'styles.css'], ['js', 'app.js'], ['search', 'search.js']]) {
   let src = await readFile(path.join(SRC, file), 'utf8');
   if (key === 'js') src = src.replace('__MANIFEST__', `a/manifest.${mHash}.json`);
   const name = `a/${file.replace(/\.(\w+)$/, `.${hashOf(src)}.$1`)}`;
