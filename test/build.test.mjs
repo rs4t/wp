@@ -9,7 +9,7 @@ const opts = { skip: built ? false : 'dist/ missing — run npm run build' };
 const m = built ? JSON.parse(readFileSync(dist('manifest.json'), 'utf8')) : null;
 
 test('manifest has every wallpaper', opts, () => {
-  assert.equal(m.items.length, 145);
+  assert.equal(m.items.length, 177);
   assert.ok(!('setups' in m) && !('categories' in m));
 });
 

@@ -36,5 +36,21 @@
     "id": "paintings",
     "name": "Paintings",
     "cover": "bb09d22e8d"
+  },
+  {
+    "id": "spider-man",
+    "name": "Spider-Man"
+  },
+  {
+    "id": "flowers",
+    "name": "Flowers"
+  },
+  {
+    "id": "gradients",
+    "name": "Gradients"
+  },
+  {
+    "id": "typography",
+    "name": "Typography"
   }
 ]

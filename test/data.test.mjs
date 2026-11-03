@@ -23,9 +23,9 @@ test('hashes are unique', () => {
   assert.equal(new Set(walls.map((w) => w.hash)).size, walls.length);
 });
 
-test("collections are the spec's nine, in order", () => {
+test('collections are listed in order', () => {
   assert.deepEqual(collections.map((c) => c.id),
-    ['fractal-maze', 'dark-waves', 'distort', 'fiery-vivid', 'grain', 'fusion', 'fractal-glass', 'mountains', 'paintings']);
+    ['fractal-maze', 'dark-waves', 'distort', 'fiery-vivid', 'grain', 'fusion', 'fractal-glass', 'mountains', 'paintings', 'spider-man', 'flowers', 'gradients', 'typography']);
 });
 
 test('every collection reference exists', () => {
@@ -46,6 +46,6 @@ test('legacy ids all point at a wallpaper', () => {
   for (const [id, h] of Object.entries(legacy)) assert.ok(hashes.has(h), id);
 });
 
-test('145 wallpapers', () => {
-  assert.equal(walls.length, 145);
+test('177 wallpapers', () => {
+  assert.equal(walls.length, 177);
 });
