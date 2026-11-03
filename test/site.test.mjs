@@ -1,7 +1,19 @@
 // Slugs and redirects: every old link keeps working, no live page gets hidden.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slugify, assignSlugs, collectAliases, redirectsFor, redirectsFile } from '../scripts/site.mjs';
+import { slugify, assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry } from '../scripts/site.mjs';
+
+test('withRetry gets through passing failures', async () => {
+  let n = 0;
+  assert.equal(await withRetry(async () => { if (++n < 3) throw new Error('blip'); return 'ok'; }, 3, 0), 'ok');
+  assert.equal(n, 3);
+});
+
+test('withRetry gives up after the last try', async () => {
+  let n = 0;
+  await assert.rejects(withRetry(async () => { n++; throw new Error('down'); }, 3, 0), /down/);
+  assert.equal(n, 3);
+});
 
 test('slugify keeps the old rules', () => {
   assert.equal(slugify('Canmore, Alberta'), 'canmore-alberta');

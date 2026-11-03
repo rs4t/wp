@@ -31,6 +31,14 @@ export function redirectsFor(aliases, slugByHash) {
   return out;
 }
 
+// Runs fn up to `tries` times, waiting longer between tries; rethrows the last error.
+export async function withRetry(fn, tries = 3, delayMs = 2000) {
+  for (let i = 1; ; i++) {
+    try { return await fn(); }
+    catch (err) { if (i >= tries) throw err; await new Promise((r) => setTimeout(r, delayMs * i)); }
+  }
+}
+
 // Cloudflare static-assets _redirects file.
 export const redirectsFile = (redirects) =>
   Object.entries(redirects).flatMap(([a, b]) => [`/w/${a} /w/${b}/ 301`, `/w/${a}/ /w/${b}/ 301`])

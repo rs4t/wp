@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import sharp from 'sharp';
-import { assignSlugs, collectAliases, redirectsFor, redirectsFile } from './site.mjs';
+import { assignSlugs, collectAliases, redirectsFor, redirectsFile, withRetry } from './site.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
@@ -227,25 +227,26 @@ const concurrency = Math.max(1, Math.min(3, (os.availableParallelism?.() ?? os.c
 let done = 0, reused = 0;
 // Processed files for one image: reused from the previous deploy when possible,
 // otherwise the original is downloaded from R2 (through the live Worker) and processed.
+// A wallpaper that can't be fetched fails the whole build, so a network blip
+// never deploys a site with wallpapers missing; the previous deploy stays live.
 async function imageFor(hash, ext, slug, label) {
-  try {
-    const old = previous.get(hash);
-    if (old) {
-      try { const r = await reuseImage(hash, ext, slug, slug, old); reused++; return r; }
-      catch (err) { log(`note: could not reuse ${label} (${err.message}); processing it`); }
-    }
+  const old = previous.get(hash);
+  if (old) {
+    try { const r = await withRetry(() => reuseImage(hash, ext, slug, slug, old)); reused++; return r; }
+    catch (err) { log(`note: could not reuse ${label} (${err.message}); processing it`); }
+  }
+  const buf = await withRetry(async () => {
     const res = await fetch(`${SITE_URL}o/${hash}/original.${ext}`, { signal: AbortSignal.timeout(300000) });
-    if (!res.ok) throw new Error(`original: HTTP ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (hashOf(buf) !== hash) throw new Error('original does not match its hash');
-    return await processImage(buf, hash, ext, slug, slug);
-  } catch (err) { log(`warning: skipping ${label} (${err.message})`); return null; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }).catch((err) => { throw new Error(`${label}: could not download the original (${err.message})`); });
+  if (hashOf(buf) !== hash) throw new Error(`${label}: the original does not match its hash ${hash}`);
+  return processImage(buf, hash, ext, slug, slug);
 }
 
 const items = (await pool(list, concurrency, async (e) => {
   const slug = slugByHash.get(e.hash);
   const r = await imageFor(e.hash, e.ext, slug, e.name);
-  if (!r) return null;
   done++;
   if (done % 10 === 0 || done === list.length) log(`processed ${done}/${list.length}`);
   return {

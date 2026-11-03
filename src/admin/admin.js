@@ -1,5 +1,5 @@
-// Admin: upload / move / delete wallpapers. Files go to R2; every save is one
-// commit to wallpapers.json in the repo, and Cloudflare rebuilds the site from it.
+// Admin: upload, name, sort into collections, delete. Files go to R2; every save
+// is one commit to wallpapers.json / collections.json, and Cloudflare rebuilds the site from it.
 (() => {
   'use strict';
   const $ = (s) => document.querySelector(s);
@@ -9,12 +9,14 @@
   const MAX = 50 * 1024 * 1024;
 
   const state = {
-    files: [],        // library, from GitHub (source of truth)
-    thumbs: new Map(),// repo path -> thumbnail url, from the live manifest
+    files: [],        // wallpapers.json, from GitHub (source of truth)
+    collections: [],  // collections.json
+    thumbs: new Map(),// hash -> thumbnail url, from the live manifest
     queue: [],        // pending uploads
-    upCat: '',        // category for uploads ('' = none)
-    libCat: null,     // library filter
-    sel: new Set(),   // selected repo paths
+    newColls: [],     // collections created here, saved with the next commit
+    libFilter: null,  // null = all, '' = one-offs, else a collection id
+    sel: new Set(),   // selected hashes
+    draft: null,      // collections section edits
     busy: false,
   };
 
@@ -22,7 +24,11 @@
   const mb = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const extOf = (n) => (n.match(/\.([^.]+)$/)?.[1] || '').toLowerCase();
-  const catName = (c) => c || 'no category';
+  const slug = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  // "fractal_glass-blue" → "Fractal Glass Blue"
+  const niceName = (file) => file.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\p{Ll}/gu, (c) => c.toUpperCase());
+  const allColls = () => [...state.collections, ...state.newColls];
+  const collName = (id) => allColls().find((c) => c.id === id)?.name || 'no collection';
 
   function toast(msg) {
     const t = $('#toast');
@@ -51,6 +57,24 @@
     return data;
   }
 
+  // A <select> of collections. extra: leading options like [['__keep__', 'collection…']].
+  function collOptions(selected, extra = []) {
+    return [...extra, ['', 'no collection'], ...allColls().map((c) => [c.id, c.name]), ['__new__', 'new collection…']]
+      .map(([v, l]) => `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  }
+  // Handles the "new collection…" choice; returns the chosen id ('' for none) or null if cancelled.
+  function pickCollection(select) {
+    if (select.value !== '__new__') return select.value;
+    const name = prompt('New collection name:')?.trim();
+    const id = name && slug(name);
+    if (!id) { select.value = ''; return null; }
+    if (!allColls().some((c) => c.id === id)) state.newColls.push({ id, name: name.slice(0, 40) });
+    select.innerHTML = collOptions(id, [...select.options].filter((o) => o.value === '__keep__').map((o) => [o.value, o.text]));
+    return id;
+  }
+  // Collections list to send when this save created one.
+  const withNewColls = (body) => (state.newColls.length ? { ...body, collections: allColls() } : body);
+
   // ---------- auth ----------
   function showLogin() { $('#app').hidden = true; $('#login').hidden = false; $('#pw').focus(); }
   function showApp() { $('#login').hidden = true; $('#app').hidden = false; }
@@ -74,162 +98,173 @@
   // The live site's manifest says what is deployed; anything in the repo but
   // not in it yet is still building. Poll until everything is live.
   const fetchManifest = () => fetch(SITE + 'manifest.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] }));
+  const thumbsFrom = (m) => new Map(m.items.map((i) => [i.hash, SITE + i.t + '-480.webp']));
   let pollT = 0;
   function renderStatus() {
-    const building = state.files.filter((f) => !state.thumbs.has(f.path)).length;
+    const building = state.files.filter((f) => !state.thumbs.has(f.hash)).length;
     const el = $('#status');
     el.className = 'status mono ' + (building ? 'busy' : 'live');
     el.textContent = !state.files.length ? '' : building ? `${building} building…` : 'all live ✓';
     clearTimeout(pollT);
-    if (building) pollT = setTimeout(async () => {
-      const m = await fetchManifest();
-      state.thumbs = new Map(m.items.filter((i) => i.src).map((i) => [i.src, SITE + i.t + '-480.webp']));
-      renderLib(); renderStatus();
-    }, 20000);
+    if (building) pollT = setTimeout(async () => { state.thumbs = thumbsFrom(await fetchManifest()); renderLib(); renderStatus(); }, 20000);
   }
 
   async function load() {
     $('#lib').innerHTML = '<li class="empty mono">loading…</li>';
     try {
-      const [list, manifest] = await Promise.all([
-        api('list'),
-        fetchManifest(),
-      ]);
+      const [list, manifest] = await Promise.all([api('list'), fetchManifest()]);
       state.files = list.files;
-      state.thumbs = new Map(manifest.items.filter((i) => i.src).map((i) => [i.src, SITE + i.t + '-480.webp']));
-      state.manifest = manifest;
-      for (const p of [...state.sel]) if (!state.files.some((f) => f.path === p)) state.sel.delete(p);
-      renderCats(); renderLib(); renderSel(); renderStatus(); renderSetups(); loadInbox();
+      state.collections = list.collections;
+      state.newColls = state.newColls.filter((c) => !state.collections.some((x) => x.id === c.id));
+      state.thumbs = thumbsFrom(manifest);
+      state.draft = null;
+      for (const h of [...state.sel]) if (!state.files.some((f) => f.hash === h)) state.sel.delete(h);
+      renderLibCats(); renderLib(); renderSel(); renderStatus(); renderColls(); renderUpColl();
     } catch (err) {
       if (err.message !== 'Logged out') $('#lib').innerHTML = `<li class="empty mono">${esc(err.message)}</li>`;
     }
   }
   $('#refresh').addEventListener('click', load);
 
-  const categories = () => [...new Set(state.files.map((f) => f.category).filter(Boolean))].sort();
-
-  // ---------- category chips ----------
-  function renderCats() {
-    const cats = categories();
-    if (state.upCat && !cats.includes(state.upCat) && !state.newCat) state.upCat = '';
-
-    // upload picker: existing + none + new
-    const up = $('#upCats');
-    up.innerHTML = '';
-    const chip = (label, value, pressed, onClick, count) => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'cat'; b.setAttribute('aria-pressed', String(pressed));
-      b.innerHTML = esc(label) + (count != null ? `<sup>${count}</sup>` : '');
-      b.addEventListener('click', onClick);
-      return b;
-    };
-    for (const c of cats) up.append(chip(c, c, state.upCat === c && !state.newCat, () => { state.newCat = false; state.upCat = c; renderCats(); }));
-    const newIn = document.createElement('input');
-    newIn.type = 'text'; newIn.className = 'cat-new'; newIn.placeholder = '+ new category'; newIn.maxLength = 40;
-    if (state.newCat) { newIn.value = state.upCat; newIn.style.borderColor = 'var(--fg)'; }
-    newIn.addEventListener('input', () => {
-      state.newCat = !!newIn.value.trim();
-      state.upCat = newIn.value.trim().toLowerCase();
-      up.querySelectorAll('.cat').forEach((b) => b.setAttribute('aria-pressed', 'false'));
-      newIn.style.borderColor = state.newCat ? 'var(--fg)' : '';
-      if (!state.newCat) renderCats();
-    });
-    up.append(newIn);
-    up.append(chip('none', '', !state.upCat && !state.newCat, () => { state.newCat = false; state.upCat = ''; renderCats(); }));
-
-    // library filter
-    const lib = $('#libCats');
-    lib.innerHTML = '';
-    const count = (c) => state.files.filter((f) => f.category === c).length;
-    lib.append(chip('all', null, state.libCat === null, () => { state.libCat = null; renderCats(); renderLib(); }, state.files.length));
-    for (const c of cats) lib.append(chip(c, c, state.libCat === c, () => { state.libCat = c; renderCats(); renderLib(); }, count(c)));
-    if (state.files.some((f) => !f.category)) lib.append(chip('no category', '', state.libCat === '', () => { state.libCat = ''; renderCats(); renderLib(); }, count('')));
-
-    // move-to select
-    const sel = $('#moveTo');
-    sel.innerHTML = '<option value="" disabled selected>move to…</option>' +
-      cats.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('') +
-      '<option value="__none__">no category</option><option value="__new__">new category…</option>';
-  }
-
-  // ---------- library ----------
-  function renderLib() {
-    const list = state.files.filter((f) => state.libCat === null || f.category === state.libCat);
-    $('#libCount').textContent = String(state.files.length);
-    const ul = $('#lib');
-    if (!list.length) { ul.innerHTML = '<li class="empty mono">no wallpapers yet — add some above</li>'; return; }
-    ul.innerHTML = list.map((f) => {
-      const thumb = state.thumbs.get(f.path);
-      return `<li class="l${state.sel.has(f.path) ? ' sel' : ''}" data-path="${esc(f.path)}" tabindex="0" role="checkbox" aria-checked="${state.sel.has(f.path)}">
-        <div class="l-img" ${thumb ? `style="background-image:url('${esc(thumb)}')"` : ''}>${thumb ? '' : '<span class="mono">building…</span>'}</div>
-        <span class="l-check">✓</span>
-        <div class="l-cap"><b>${esc(f.name.replace(/\.[^.]+$/, ''))}</b><span class="mono dim">${esc(catName(f.category))} · ${mb(f.size)}</span></div>
-      </li>`;
-    }).join('');
-  }
-  function toggleSel(li) {
-    const p = li.dataset.path;
-    state.sel.has(p) ? state.sel.delete(p) : state.sel.add(p);
-    li.classList.toggle('sel', state.sel.has(p));
-    li.setAttribute('aria-checked', String(state.sel.has(p)));
-    renderSel();
-  }
-  $('#lib').addEventListener('click', (e) => { const li = e.target.closest('.l'); if (li) toggleSel(li); });
-  $('#lib').addEventListener('keydown', (e) => { const li = e.target.closest('.l'); if (li && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); toggleSel(li); } });
-
-  function renderSel() {
-    const n = state.sel.size;
-    $('#selDock').hidden = n === 0 || state.queue.length > 0;
-    $('#selSummary').textContent = `${n} selected`;
-    $('#rename').hidden = n !== 1;
-    $('#credit').hidden = n !== 1;
-  }
-  $('#rename').addEventListener('click', async () => {
-    const [path] = state.sel;
-    const f = state.files.find((x) => x.path === path);
-    if (!f) return;
-    const old = f.name.replace(/\.[^.]+$/, '');
-    const name = prompt('New name:', old)?.trim();
-    if (!name || name === old) return;
-    await save({ move: [{ from: path, name }] }, `Renamed to ${name}`);
-  });
-  $('#clearSel').addEventListener('click', () => { state.sel.clear(); renderLib(); renderSel(); });
-
-  $('#moveTo').addEventListener('change', async (e) => {
-    let cat = e.target.value;
-    e.target.selectedIndex = 0;
-    if (cat === '__new__') { cat = prompt('New category name:')?.trim().toLowerCase(); if (!cat) return; }
-    if (cat === '__none__') cat = '';
-    const move = [...state.sel].map((from) => ({ from, category: cat }));
-    await save({ move }, `Moved ${move.length} to ${catName(cat)}`);
-  });
-  $('#delete').addEventListener('click', async () => {
-    const n = state.sel.size;
-    if (!confirm(`Delete ${n} wallpaper${n === 1 ? '' : 's'} from the site?\n\nThey stay in the repo's git history, so this can be undone on GitHub.`)) return;
-    await save({ delete: [...state.sel] }, `Deleted ${n}`);
-  });
-
   async function save(body, label) {
-    if (state.busy) return;
+    if (state.busy) return false;
     state.busy = true;
-    document.querySelectorAll('.dock .btn, .dock select').forEach((b) => (b.disabled = true));
+    document.querySelectorAll('.dock .btn, .dock select, #saveColls').forEach((b) => (b.disabled = true));
     try {
-      const r = await api('commit', { method: 'POST', body: JSON.stringify(body) });
+      const r = await api('commit', { method: 'POST', body: JSON.stringify(withNewColls(body)) });
+      state.newColls = [];
       state.sel.clear();
       if (!r.noop) liveBanner(label);
       await load();
+      return true;
     } catch (err) {
       if (err.message !== 'Logged out') banner(`Couldn't save: ${esc(err.message)}`, true);
+      return false;
     } finally {
       state.busy = false;
       document.querySelectorAll('.dock .btn, .dock select').forEach((b) => (b.disabled = false));
-      renderSel();
+      renderSel(); renderColls();
     }
   }
   function liveBanner(label) {
     banner(`<b>${esc(label)}.</b> Saved to the repo — the site rebuilds and shows it in about 2–3 minutes.`);
     toast('Saved');
   }
+
+  // ---------- library ----------
+  function chip(label, pressed, onClick, count) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'cat'; b.setAttribute('aria-pressed', String(pressed));
+    b.innerHTML = esc(label) + (count != null ? `<sup>${count}</sup>` : '');
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function renderLibCats() {
+    const el = $('#libCats');
+    el.innerHTML = '';
+    const count = (id) => state.files.filter((f) => (f.collection || '') === id).length;
+    const pick = (v) => () => { state.libFilter = v; renderLibCats(); renderLib(); };
+    el.append(chip('all', state.libFilter === null, pick(null), state.files.length));
+    for (const c of state.collections) el.append(chip(c.name, state.libFilter === c.id, pick(c.id), count(c.id)));
+    el.append(chip('one-offs', state.libFilter === '', pick(''), count('')));
+  }
+  function renderLib() {
+    const list = state.files.filter((f) => state.libFilter === null || (f.collection || '') === state.libFilter)
+      .sort((a, b) => b.added - a.added);
+    $('#libCount').textContent = String(state.files.length);
+    const ul = $('#lib');
+    if (!list.length) { ul.innerHTML = '<li class="empty mono">nothing here yet — add some above</li>'; return; }
+    ul.innerHTML = list.map((f) => {
+      const thumb = state.thumbs.get(f.hash);
+      return `<li class="l${state.sel.has(f.hash) ? ' sel' : ''}" data-hash="${f.hash}" tabindex="0" role="checkbox" aria-checked="${state.sel.has(f.hash)}">
+        <div class="l-img" ${thumb ? `style="background-image:url('${esc(thumb)}')"` : ''}>${thumb ? '' : '<span class="mono">building…</span>'}</div>
+        <span class="l-check">✓</span>
+        <div class="l-cap"><b>${esc(f.name)}</b><span class="mono dim">${esc(f.collection ? collName(f.collection) : 'one-off')} · ${mb(f.size)}</span></div>
+      </li>`;
+    }).join('');
+  }
+  function toggleSel(li) {
+    const h = li.dataset.hash;
+    state.sel.has(h) ? state.sel.delete(h) : state.sel.add(h);
+    li.classList.toggle('sel', state.sel.has(h));
+    li.setAttribute('aria-checked', String(state.sel.has(h)));
+    renderSel();
+  }
+  $('#lib').addEventListener('click', (e) => { const li = e.target.closest('.l'); if (li) toggleSel(li); });
+  $('#lib').addEventListener('keydown', (e) => { const li = e.target.closest('.l'); if (li && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); toggleSel(li); } });
+
+  // ---------- edit selection (dock) ----------
+  function renderSel() {
+    const n = state.sel.size, one = n === 1;
+    $('#selDock').hidden = n === 0 || state.queue.length > 0;
+    if (!n) return;
+    const f = one && state.files.find((x) => x.hash === [...state.sel][0]);
+    $('#selSummary').textContent = one ? '' : `${n} selected`;
+    for (const id of ['#editName', '#editCredit', '#editLink']) $(id).hidden = !one;
+    $('#editColl').innerHTML = one ? collOptions(f.collection || '') : collOptions('__keep__', [['__keep__', 'move to…']]);
+    if (one) {
+      $('#editName').value = f.name;
+      $('#editCredit').value = f.credit?.name || '';
+      $('#editLink').value = f.credit?.link || '';
+    }
+  }
+  $('#editColl').addEventListener('change', (e) => pickCollection(e.target));
+  $('#selDock').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const hashes = [...state.sel];
+    const coll = $('#editColl').value;
+    if (coll === '__new__') return;
+    if (hashes.length === 1) {
+      const name = $('#editName').value.trim();
+      if (!name) return toast('Every wallpaper needs a name');
+      const credit = $('#editCredit').value.trim();
+      await save({ update: [{ hash: hashes[0], name, collection: coll || null, credit: credit ? { name: credit, link: $('#editLink').value.trim() } : null }] }, `Saved ${name}`);
+    } else {
+      if (coll === '__keep__') return toast('Pick a collection to move them to');
+      await save({ update: hashes.map((hash) => ({ hash, collection: coll || null })) }, `Moved ${hashes.length} to ${collName(coll)}`);
+    }
+  });
+  $('#clearSel').addEventListener('click', () => { state.sel.clear(); renderLib(); renderSel(); });
+  $('#delete').addEventListener('click', async () => {
+    const n = state.sel.size;
+    if (!confirm(`Delete ${n} wallpaper${n === 1 ? '' : 's'} from the site?\n\nThe files stay in storage, so reverting the commit on GitHub brings them back.`)) return;
+    await save({ delete: [...state.sel] }, `Deleted ${n}`);
+  });
+
+  // ---------- collections section ----------
+  function renderColls() {
+    const draft = state.draft || (state.draft = state.collections.map((c) => ({ ...c })));
+    $('#collCount').textContent = String(state.collections.length);
+    $('#saveColls').disabled = state.busy || JSON.stringify(draft) === JSON.stringify(state.collections);
+    $('#colls').innerHTML = draft.map((c, i) => {
+      const members = state.files.filter((f) => f.collection === c.id).sort((a, b) => b.added - a.added);
+      const covers = `<option value="">cover: newest</option>` + members.map((f) => `<option value="${f.hash}"${f.hash === c.cover ? ' selected' : ''}>cover: ${esc(f.name)}</option>`).join('');
+      return `<li class="coll" data-i="${i}">
+        <input type="text" class="c-name" value="${esc(c.name)}" maxlength="40" aria-label="Collection name">
+        <span class="mono dim">${members.length}</span>
+        <select class="c-cover" aria-label="Cover">${covers}</select>
+        <button class="btn ghost small" type="button" data-move="-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button>
+        <button class="btn ghost small" type="button" data-move="1" aria-label="Move down"${i < draft.length - 1 ? '' : ' disabled'}>↓</button>
+      </li>`;
+    }).join('') || '<li class="empty mono">no collections yet — pick "new collection…" when uploading</li>';
+  }
+  $('#colls').addEventListener('input', (e) => {
+    const c = state.draft[+e.target.closest('.coll').dataset.i];
+    if (e.target.classList.contains('c-name')) c.name = e.target.value;
+    if (e.target.classList.contains('c-cover')) { if (e.target.value) c.cover = e.target.value; else delete c.cover; }
+    $('#saveColls').disabled = JSON.stringify(state.draft) === JSON.stringify(state.collections);
+  });
+  $('#colls').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-move]');
+    if (!b) return;
+    const i = +b.closest('.coll').dataset.i, j = i + +b.dataset.move;
+    [state.draft[i], state.draft[j]] = [state.draft[j], state.draft[i]];
+    renderColls();
+  });
+  $('#saveColls').addEventListener('click', async () => {
+    if (state.draft.some((c) => !c.name.trim())) return toast('Every collection needs a name');
+    await save({ collections: state.draft.map((c) => ({ ...c, name: c.name.trim() })) }, 'Saved collections');
+  });
 
   // ---------- upload queue ----------
   const drop = $('#drop');
@@ -241,19 +276,23 @@
   addEventListener('dragover', (e) => e.preventDefault());
   addEventListener('drop', (e) => { if (!drop.contains(e.target)) { e.preventDefault(); addFiles(e.dataTransfer.files); } });
 
+  function renderUpColl() { $('#upColl').innerHTML = collOptions($('#upColl').value || ''); }
+  $('#upColl').addEventListener('change', (e) => pickCollection(e.target));
+
   function addFiles(list) {
     const skipped = [];
     for (const file of list) {
       const ext = extOf(file.name);
       if (!IMAGE_EXT.includes(ext)) { skipped.push(`${file.name} (not an image)`); continue; }
       if (file.size > MAX) { skipped.push(`${file.name} (over 50 MB)`); continue; }
-      const q = { id: Math.random().toString(36).slice(2), file, ext, name: file.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(file), status: 'ready' };
+      const q = { id: Math.random().toString(36).slice(2), file, ext, name: niceName(file.name), url: URL.createObjectURL(file), status: 'ready' };
       state.queue.push(q);
       const img = new Image();
       img.onload = () => { q.res = `${img.naturalWidth}×${img.naturalHeight}`; const m = document.querySelector(`[data-q="${q.id}"] .q-res`); if (m) m.textContent = q.res; };
       img.src = q.url;
     }
     if (skipped.length) toast(`Skipped: ${skipped.join(', ')}`);
+    renderUpColl();
     renderQueue();
   }
 
@@ -268,7 +307,7 @@
         <button class="q-x" type="button" aria-label="Remove">✕</button>
         <div class="q-bar"><i style="width:${q.progress || 0}%"></i></div>
         <div class="q-body">
-          <input type="text" value="${esc(q.name)}" aria-label="Title" maxlength="100">
+          <input type="text" value="${esc(q.name)}" aria-label="Name" maxlength="100">
           <div class="q-meta mono"><span class="q-res">${q.res || ''}</span><span>${mb(q.file.size)} · ${q.ext}</span></div>
           <span class="q-status mono">${q.error ? esc(q.error) : q.status === 'done' ? 'uploaded' : ''}</span>
         </div>
@@ -326,11 +365,12 @@
 
   $('#upload').addEventListener('click', async () => {
     if (state.busy || !state.queue.length) return;
-    for (const q of state.queue) if (!q.name.trim()) { toast('Every wallpaper needs a title'); return; }
+    for (const q of state.queue) if (!q.name.trim()) { toast('Every wallpaper needs a name'); return; }
+    const coll = $('#upColl').value;
+    if (coll === '__new__') return;
     state.busy = true;
     banner('');
     renderQueue();
-    const cat = state.upCat;
     // Upload one at a time (steady progress, gentle on mobile data), then one commit.
     for (const q of state.queue) {
       if (q.hash) continue;
@@ -348,11 +388,11 @@
     const failed = state.queue.filter((q) => !q.hash);
     if (ok.length) {
       try {
-        await api('commit', { method: 'POST', body: JSON.stringify({ add: ok.map((q) => ({ hash: q.hash, name: q.name.trim(), ext: q.ext, category: cat })) }) });
+        await api('commit', { method: 'POST', body: JSON.stringify(withNewColls({ add: ok.map((q) => ({ hash: q.hash, name: q.name.trim(), ext: q.ext, ...(coll ? { collection: coll } : {}) })) })) });
+        state.newColls = [];
         ok.forEach((q) => URL.revokeObjectURL(q.url));
         state.queue = failed;
-        state.newCat = false;
-        liveBanner(`Added ${ok.length} wallpaper${ok.length === 1 ? '' : 's'}${cat ? ` to ${cat}` : ''}`);
+        liveBanner(`Added ${ok.length} wallpaper${ok.length === 1 ? '' : 's'}${coll ? ` to ${collName(coll)}` : ''}`);
         if (failed.length) banner($('#banner').innerHTML + `<br>${failed.length} failed — they're still in the queue, press upload to retry.`, true);
         await load();
       } catch (err) {
@@ -366,174 +406,6 @@
   });
 
   addEventListener('beforeunload', (e) => { if (state.busy) { e.preventDefault(); e.returnValue = ''; } });
-
-  // ---------- credits ----------
-  $('#credit').addEventListener('click', async () => {
-    const [path] = state.sel;
-    const cur = state.manifest?.items.find((i) => i.src === path)?.credit || {};
-    const name = prompt('Credit name (leave empty to remove the credit):', cur.name || '');
-    if (name === null) return;
-    const link = name.trim() ? prompt('Credit link (optional):', cur.link || '') : '';
-    if (link === null) return;
-    await save({ credit: [{ path, name: name.trim(), link: (link || '').trim() }] }, name.trim() ? `Credited ${name.trim()}` : 'Removed credit');
-  });
-
-  // ---------- uploads from a Blob (inbox approvals, own setups) ----------
-  // Setup photos don't need full resolution: 2560px JPEG is plenty.
-  async function shrinkForSetup(blob) {
-    const bmp = await createImageBitmap(blob);
-    const k = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement('canvas');
-    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-    bmp.close?.();
-    return new Promise((r, j) => c.toBlob((b) => (b ? r(b) : j(new Error('Could not convert image'))), 'image/jpeg', 0.88));
-  }
-
-  // ---------- inbox ----------
-  const byHash = (h) => state.manifest?.items.find((i) => i.hash === h);
-  const fileUrl = (key) => API + 'inbox/file?key=' + encodeURIComponent(key);
-  async function loadInbox() {
-    let data;
-    try { data = await api('inbox'); } catch (err) { $('#inboxNote').textContent = err.message; return; }
-    state.inbox = data.items || [];
-    const n = state.inbox.length;
-    $('#inboxCount').hidden = !n;
-    $('#inboxCount').textContent = `${n} new`;
-    $('#inboxNote').textContent = !data.enabled
-      ? 'Submissions are off until the R2 bucket and the Turnstile secrets are set up.'
-      : n ? '' : 'No new submissions.';
-    renderInbox();
-  }
-  $('#inboxRefresh').addEventListener('click', loadInbox);
-
-  function renderInbox() {
-    const cats = categories();
-    $('#inbox').innerHTML = (state.inbox || []).map((s) => {
-      const d = s.data, setup = s.type === 'setup';
-      const walls = (d.wallpapers || []).map(byHash).filter(Boolean).map((w) => esc(w.title)).join(', ');
-      const catOpts = (sel) => `<option value="">no category</option>` +
-        [...new Set([...cats, sel].filter(Boolean))].map((c) => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('') +
-        `<option value="__new__">new category…</option>`;
-      return `<li class="sub" data-id="${s.id}">
-        <div class="sub-head">
-          <span class="kind ${s.type}">${setup ? 'setup' : 'wallpaper'}</span>
-          <span class="mono dim">${new Date(s.created).toLocaleString()}</span>
-        </div>
-        <div class="sub-meta">
-          <label>credit <input class="c-name" value="${esc(d.name)}" maxlength="60"></label>
-          <label>link <input class="c-link" value="${esc(d.link || '')}" maxlength="300"></label>
-          ${setup ? `<label class="wide">caption <input class="c-caption" value="${esc(d.caption || '')}" maxlength="200"></label>` : ''}
-          ${setup && walls ? `<p class="wide mono">wallpapers: ${walls}</p>` : ''}
-          ${!setup && d.category ? `<p class="wide mono">suggested category: ${esc(d.category)}</p>` : ''}
-          ${d.message ? `<p class="wide msg">${esc(d.message)}</p>` : ''}
-        </div>
-        <ul class="sub-imgs">${s.files.map((f, n) => `
-          <li data-n="${n}">
-            <a href="${fileUrl(f.key)}" target="_blank" rel="noopener"><img src="${fileUrl(f.key)}" alt="" loading="lazy"></a>
-            <label class="keep"><input type="checkbox" class="f-keep" checked> keep</label>
-            ${setup ? '' : `<input class="f-name" value="${esc(f.name.replace(/\.[^.]+$/, ''))}" maxlength="100" placeholder="name">
-              <select class="f-cat">${catOpts(cats.includes(d.category) ? d.category : '')}</select>`}
-            <span class="mono dim">${mb(f.size)}</span>
-          </li>`).join('')}</ul>
-        <div class="sub-actions">
-          ${d.email ? `<a class="btn ghost" href="mailto:${esc(d.email)}?subject=${encodeURIComponent("Your submission to egor's wallpapers")}">reply</a>` : ''}
-          <button class="btn danger" type="button" data-act="reject">reject</button>
-          <button class="btn solid" type="button" data-act="approve">approve</button>
-        </div>
-      </li>`;
-    }).join('');
-  }
-
-  $('#inbox').addEventListener('change', (e) => {
-    if (e.target.classList.contains('f-cat') && e.target.value === '__new__') {
-      const c = prompt('New category name:')?.trim().toLowerCase();
-      if (!c) { e.target.selectedIndex = 0; return; }
-      const o = new Option(c, c, true, true);
-      e.target.add(o, e.target.options.length - 1);
-    }
-  });
-
-  $('#inbox').addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-act]');
-    if (!btn || state.busy) return;
-    const li = btn.closest('.sub');
-    const s = state.inbox.find((x) => x.id === li.dataset.id);
-    if (btn.dataset.act === 'reject') {
-      if (!confirm('Reject and delete this submission?')) return;
-      try { await api('inbox/resolve', { method: 'POST', body: JSON.stringify({ id: s.id }) }); toast('Rejected'); loadInbox(); }
-      catch (err) { banner(`Couldn't reject: ${esc(err.message)}`, true); }
-      return;
-    }
-    const keep = [...li.querySelectorAll('.sub-imgs > li')].filter((x) => x.querySelector('.f-keep').checked);
-    if (!keep.length) return toast('Keep at least one image, or reject');
-    const credit = { name: li.querySelector('.c-name').value.trim(), link: li.querySelector('.c-link').value.trim() };
-    state.busy = true;
-    li.classList.add('working');
-    btn.textContent = 'publishing…';
-    try {
-      const body = { add: [], setups: [] };
-      for (const x of keep) {
-        const f = s.files[+x.dataset.n];
-        const res = await fetch(fileUrl(f.key), { credentials: 'same-origin' });
-        if (!res.ok) throw new Error(`Could not load ${f.name}`);
-        let blob = await res.blob();
-        if (s.type === 'setup') {
-          blob = await shrinkForSetup(blob);
-          body.setups.push({ hash: await putOriginal(blob, 'jpg'), ...credit, caption: li.querySelector('.c-caption')?.value.trim() || '', wallpapers: s.data.wallpapers || [] });
-        } else {
-          body.add.push({ hash: await putOriginal(blob, extOf(f.key)), name: x.querySelector('.f-name').value.trim(), ext: extOf(f.key), category: x.querySelector('.f-cat').value, credit });
-        }
-      }
-      await api('commit', { method: 'POST', body: JSON.stringify(body) });
-      await api('inbox/resolve', { method: 'POST', body: JSON.stringify({ id: s.id }) });
-      liveBanner(s.type === 'setup' ? `Published ${keep.length} setup photo${keep.length === 1 ? '' : 's'}` : `Added ${keep.length} wallpaper${keep.length === 1 ? '' : 's'} by ${credit.name}`);
-      state.busy = false;
-      await load();
-    } catch (err) {
-      if (err.message !== 'Logged out') banner(`Couldn't approve: ${esc(err.message)}`, true);
-      li.classList.remove('working');
-      btn.textContent = 'approve';
-    } finally { state.busy = false; }
-  });
-
-  // ---------- community: published setups ----------
-  function renderSetups() {
-    const list = state.manifest?.setups || [];
-    $('#setupCount').textContent = String(list.length);
-    $('#setups').innerHTML = list.length ? list.map((st) => `
-      <li class="l setup" data-setup="${esc(st.id)}" tabindex="0">
-        <div class="l-img" style="background-image:url('${esc(SITE + st.t + '-480.webp')}')"></div>
-        <div class="l-cap"><b>${esc(st.caption || st.name)}</b><span class="mono dim">${esc(st.name)}</span></div>
-      </li>`).join('') : '<li class="empty mono">no setups published yet</li>';
-    const sel = $('#ownWalls');
-    if (sel && !sel.options.length) sel.innerHTML = (state.manifest?.items || []).map((i) => `<option value="${i.hash}">${esc(i.title)}</option>`).join('');
-  }
-  $('#setups').addEventListener('click', async (e) => {
-    const li = e.target.closest('[data-setup]');
-    if (!li || state.busy) return;
-    if (!confirm('Remove this setup from the community page?')) return;
-    await save({ unsetup: [li.dataset.setup] }, 'Removed setup');
-  });
-  $('#ownForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (state.busy) return;
-    const files = [...$('#ownFiles').files].slice(0, 3);
-    if (!files.length) return;
-    const btn = e.target.querySelector('button');
-    state.busy = true; btn.disabled = true; btn.textContent = 'publishing…';
-    try {
-      const wallpapers = [...$('#ownWalls').selectedOptions].map((o) => o.value).slice(0, 5);
-      const setups = [];
-      for (const f of files) setups.push({ hash: await putOriginal(await shrinkForSetup(f), 'jpg'), name: $('#ownName').value.trim() || 'egor', link: $('#ownLink').value.trim(), caption: $('#ownCaption').value.trim(), wallpapers });
-      state.busy = false;
-      await save({ setups }, `Published ${setups.length} setup${setups.length === 1 ? '' : 's'}`);
-      e.target.reset(); $('#ownName').value = 'egor';
-      e.target.closest('details').open = false;
-    } catch (err) {
-      banner(`Couldn't publish: ${esc(err.message)}`, true);
-    } finally { state.busy = false; btn.disabled = false; btn.textContent = 'publish setup'; }
-  });
 
   // ---------- boot ----------
   api('session').then(() => { showApp(); load(); }).catch((err) => {
