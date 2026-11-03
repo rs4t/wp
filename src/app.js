@@ -15,7 +15,7 @@
   const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
-  const grid = $('#grid'), bar = $('#bar'), panel = $('#panel'), qInput = $('#q');
+  const grid = $('#grid'), bar = $('#bar'), spot = $('#spot'), qInput = $('#q');
   const lb = $('#lb'), stage = $('#stage');
 
   let data, items = [], byId = new Map();
@@ -84,18 +84,18 @@
     buildTiles();
     buildFooter();
     applyView(false);
-    if (query || color || sort !== 'random') setPanel(true, false);
 
     $('#empty').hidden = items.length > 0;
     $('#shuffle').addEventListener('click', shuffle);
-    $('#searchBtn').addEventListener('click', () => setPanel(panel.hidden, true));
-    $('#clearFilters').addEventListener('click', () => { query = ''; qInput.value = ''; color = null; applyView(true); syncQuery(); });
-    let qt;
+    $('#searchBtn').addEventListener('click', () => (spot.hidden ? openSearch() : closeSearch()));
+    $('#clearFilters').addEventListener('click', clearFilters);
+    $('#filters').addEventListener('click', (e) => { if (e.target.closest('button')) clearFilters(); });
+
     qInput.addEventListener('input', () => {
       clearTimeout(qt);
-      qt = setTimeout(() => { query = qInput.value.trim(); toGridTop(); applyView(true); syncQuery(); }, 160);
+      qt = setTimeout(() => { query = qInput.value.trim(); toGridTop(); applyView(true); syncQuery(); }, 140);
     });
-    qInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setPanel(false, false); $('#searchBtn').focus(); } });
+    bindSearch();
 
     let rt;
     addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(false); refit(); }, 120); });
@@ -136,11 +136,88 @@
     return n ? `${n} download${n === 1 ? '' : 's'}` : '';
   }
 
-  // ---------- search panel: text, sort, color ----------
-  function setPanel(open, focus) {
-    panel.hidden = !open;
-    $('#searchBtn').setAttribute('aria-expanded', String(open));
-    if (open && focus) qInput.focus({ preventScroll: true });
+  // ---------- search: a floating command bar (text, top matches, sort, color) ----------
+  let spotOpener = null, hitSel = 0, closeT = 0, qt = 0;
+  function lockPage(on) {
+    const sbw = innerWidth - document.documentElement.clientWidth;
+    document.documentElement.classList.toggle('locked', on);
+    body.style.paddingRight = on && sbw ? sbw + 'px' : '';
+  }
+  function openSearch() {
+    if (!lb.hidden) return;
+    if (!spot.hidden && !spot.classList.contains('closing')) return qInput.focus();
+    clearTimeout(closeT);
+    spotOpener = document.activeElement;
+    spot.classList.remove('closing');
+    spot.hidden = false;
+    lockPage(true);
+    $('#searchBtn').setAttribute('aria-expanded', 'true');
+    renderHits();
+    spot.offsetWidth; // start the entrance from the hidden state
+    spot.classList.add('open');
+    qInput.focus({ preventScroll: true });
+    qInput.select();
+  }
+  function closeSearch(then) {
+    if (spot.hidden || spot.classList.contains('closing')) return;
+    spot.classList.remove('open');
+    spot.classList.add('closing');
+    $('#searchBtn').setAttribute('aria-expanded', 'false');
+    closeT = setTimeout(() => {
+      spot.hidden = true; spot.classList.remove('closing');
+      lockPage(false);
+      if (then) then(); else spotOpener?.focus?.({ preventScroll: true });
+    }, reduced ? 0 : 170);
+  }
+  function clearFilters() {
+    query = ''; qInput.value = ''; color = null;
+    applyView(true); syncQuery();
+  }
+  // The six best matches, as thumbnails; Enter opens the picked one.
+  function renderHits() {
+    const active = !!(query || color);
+    const hits = active ? view.slice(0, 6) : [];
+    hitSel = 0;
+    $('#hits').innerHTML = hits.map((it, i) =>
+      `<button type="button" class="hit${i ? '' : ' sel'}" data-id="${escapeHtml(it.id)}" style="--c:${it.color};--d:${i * 40}ms">` +
+      `<img src="${url(`${it.t}-480.webp`)}" alt="" decoding="async"><span>${escapeHtml(it.name)}</span></button>`).join('');
+    $('#spotCount').textContent = active ? `${view.length} ${view.length === 1 ? 'match' : 'matches'}` : `${items.length} wallpapers`;
+  }
+  function pickHit(i) {
+    const hits = [...$('#hits').children];
+    if (!hits.length) return;
+    hitSel = (i + hits.length) % hits.length;
+    hits.forEach((h, k) => h.classList.toggle('sel', k === hitSel));
+    hits[hitSel].scrollIntoView({ block: 'nearest' });
+  }
+  function openHit(id) {
+    const it = byId.get(id);
+    if (it) closeSearch(() => openLightbox(it, { fromTile: true, push: true }));
+  }
+  function bindSearch() {
+    spot.addEventListener('click', (e) => {
+      if (e.target.closest('[data-close]')) closeSearch();
+      const hit = e.target.closest('.hit');
+      if (hit) openHit(hit.dataset.id);
+    });
+    spot.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSearch(); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); pickHit(hitSel + (e.key === 'ArrowDown' ? 1 : -1)); }
+      else if (e.key === 'Enter' && e.target === qInput) {
+        e.preventDefault();
+        // Typed faster than the search ran: run it now (this resets the pick to the top match).
+        const typed = qInput.value.trim();
+        if (typed !== query) { clearTimeout(qt); query = typed; applyView(false); syncQuery(); }
+        const hit = $('#hits').children[hitSel];
+        if (hit) openHit(hit.dataset.id); else closeSearch();
+      } else if (e.key === 'Tab') {
+        // Keep Tab inside the search box.
+        const f = [...spot.querySelectorAll('input, button')].filter((el) => el.offsetParent !== null);
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    });
   }
   function buildSorts() {
     const row = $('#sorts');
@@ -157,7 +234,7 @@
   }
   function buildSwatches() {
     const row = $('#swatches');
-    if (!data.colors?.length) { row.closest('.panel-row').hidden = true; return; }
+    if (!data.colors?.length) { row.closest('.spot-row').hidden = true; return; }
     for (const c of data.colors) {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'swatch'; b.dataset.color = c.id;
@@ -180,8 +257,9 @@
   // ---------- collections strip / footer ----------
   function buildStrip() {
     const strip = $('#strip');
-    $('#wallHead').hidden = !!COLL;
+    $('#wallHead').classList.toggle('coll', !!COLL);
     if (COLL || !data.collections.length) return;
+    bindStripWheel(strip);
     const byHash = new Map(data.items.map((i) => [i.hash, i]));
     strip.innerHTML = data.collections.map((c) => {
       const cover = byHash.get(c.cover);
@@ -190,6 +268,35 @@
         `<b>${escapeHtml(c.name)}</b><span class="mono">${c.count}</span></a>`;
     }).join('');
     strip.hidden = false;
+  }
+  // Over the strip the wheel scrolls the covers sideways (eased); anywhere else it scrolls the page.
+  function bindStripWheel(strip) {
+    let target = 0, frame = 0;
+    const max = () => strip.scrollWidth - strip.clientWidth;
+    const edges = () => {
+      strip.classList.toggle('more-l', strip.scrollLeft > 4);
+      strip.classList.toggle('more-r', strip.scrollLeft < max() - 4);
+    };
+    const step = () => {
+      const d = target - strip.scrollLeft;
+      if (Math.abs(d) < 0.5) { strip.scrollLeft = target; frame = 0; strip.style.scrollSnapType = ''; return; }
+      strip.scrollLeft += d * 0.2;
+      frame = requestAnimationFrame(step);
+    };
+    strip.addEventListener('wheel', (e) => {
+      // Sideways gestures (trackpads, shift+wheel) already scroll it natively.
+      if (max() <= 0 || e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      // Touch-screen laptops snap the strip; snapping would fight the eased scroll.
+      strip.style.scrollSnapType = 'none';
+      if (!frame) target = strip.scrollLeft;
+      target = Math.max(0, Math.min(max(), target + e.deltaY * (e.deltaMode === 1 ? 40 : 1)));
+      if (reduced) { strip.scrollLeft = target; strip.style.scrollSnapType = ''; }
+      else if (!frame) frame = requestAnimationFrame(step);
+    }, { passive: false });
+    strip.addEventListener('scroll', edges, { passive: true });
+    addEventListener('resize', edges);
+    requestAnimationFrame(edges);
   }
   function syncQuery() {
     const q = new URLSearchParams();
@@ -279,6 +386,12 @@
     $('#swatches').classList.toggle('picking', !!color);
     $('#searchBtn').classList.toggle('active', !!(query || color));
     $('#none').hidden = view.length > 0 || items.length === 0;
+    // An active search stays visible (and clearable) after the search box closes.
+    const filters = $('#filters'), active = !!(query || color);
+    filters.hidden = !active;
+    $('#wallHead').classList.toggle('filtered', active);
+    if (active) filters.innerHTML = [query && `<b>“${escapeHtml(query)}”</b>`, color && `<b>${color}</b>`].filter(Boolean).join(' · ') + '<button type="button">clear</button>';
+    if (!spot.hidden) renderHits();
 
     if (!animate || reduced) {
       for (const [id, t] of tiles) t.el.classList.toggle('gone', !visible.has(id));
@@ -829,7 +942,8 @@
   addEventListener('pointercancel', endPointer);
 
   function onKey(e) {
-    if (e.metaKey || e.ctrlKey || e.altKey || $('.intro')) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && lb.hidden) { e.preventDefault(); spot.hidden ? openSearch() : closeSearch(); return; }
+    if (e.metaKey || e.ctrlKey || e.altKey || $('.intro') || !spot.hidden) return;
     if (!lb.hidden) {
       if (e.key === 'Escape') { e.preventDefault(); z.s > 1 ? resetZoom() : closeLightbox(); }
       else if (e.key === 'z' || e.key === 'Z') { if (z.s > 1) resetZoom(); else if (fig) { zoomAt(maxZoom(), innerWidth / 2, innerHeight / 2); applyZoom(); } }
@@ -839,7 +953,7 @@
       else if (e.key === 'Tab') trapFocus(e);
     } else if (!/input|textarea/i.test(document.activeElement?.tagName)) {
       if (e.key === 'r' || e.key === 'R') shuffle();
-      else if (e.key === '/') { e.preventDefault(); setPanel(true, true); }
+      else if (e.key === '/') { e.preventDefault(); openSearch(); }
     }
   }
   function trapFocus(e) {

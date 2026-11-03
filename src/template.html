@@ -33,7 +33,7 @@
   <div class="bar-row">
     <a class="mark" href="{{root}}" aria-label="egor's wallpapers — home"><span>egor's</span> <em>wallpapers</em></a>
     <div class="actions">
-      <button class="btn ghost icon" id="searchBtn" type="button" aria-label="Search (/)" aria-expanded="false" aria-controls="panel" title="Search (/)">
+      <button class="btn ghost icon" id="searchBtn" type="button" aria-label="Search (/)" aria-expanded="false" aria-controls="spot" aria-haspopup="dialog" title="Search (/ or Ctrl+K)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4"/></svg>
       </button>
       <button class="btn ghost icon" id="shuffle" type="button" aria-label="Random wallpaper (R)" title="Random wallpaper (R)">
@@ -41,17 +41,12 @@
       </button>
     </div>
   </div>
-  <div class="panel" id="panel" hidden>
-    <input type="search" id="q" placeholder="search names, collections, colors…" autocomplete="off" aria-label="Search wallpapers">
-    <div class="panel-row"><span class="mono">sort</span><div class="sorts" id="sorts" role="group" aria-label="Sort order"></div></div>
-    <div class="panel-row"><span class="mono">color</span><div class="swatches" id="swatches" role="group" aria-label="Filter by color"></div></div>
-  </div>
 </header>
 
 <main>
   {{banner}}
   <nav class="strip" id="strip" aria-label="Collections" hidden></nav>
-  <div class="wall-head" id="wallHead"><h2>Everything</h2><span class="mono dim" id="count" aria-live="polite"></span></div>
+  <div class="wall-head" id="wallHead"><h2>Everything</h2><span class="mono dim" id="count" aria-live="polite"></span><span class="filters mono" id="filters" hidden></span></div>
   <div class="grid" id="grid" aria-label="Wallpapers"></div>
   <div class="empty" id="none" hidden>
     <em>Nothing matches.</em>
@@ -64,6 +59,21 @@
 </main>
 
 <footer class="foot mono" id="foot"></footer>
+
+<div class="spot" id="spot" role="dialog" aria-modal="true" aria-label="Search wallpapers" hidden>
+  <div class="spot-back" data-close></div>
+  <div class="spot-box">
+    <label class="spot-q">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4"/></svg>
+      <input type="search" id="q" placeholder="Search wallpapers, collections, colors…" autocomplete="off" spellcheck="false" aria-label="Search wallpapers" aria-controls="hits">
+      <kbd class="mono">esc</kbd>
+    </label>
+    <div class="spot-hits" id="hits" aria-label="Top matches"></div>
+    <div class="spot-row"><span class="mono">sort</span><div class="sorts" id="sorts" role="group" aria-label="Sort order"></div></div>
+    <div class="spot-row"><span class="mono">color</span><div class="swatches" id="swatches" role="group" aria-label="Filter by color"></div></div>
+    <div class="spot-foot mono"><span id="spotCount" aria-live="polite"></span><span><kbd>↵</kbd> open <kbd>↑↓</kbd> pick <kbd>esc</kbd> close</span></div>
+  </div>
+</div>
 
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Wallpaper viewer" hidden>
   <div class="lb-amb" aria-hidden="true"><div class="amb"></div><div class="amb"></div><div class="lb-shade"></div></div>
